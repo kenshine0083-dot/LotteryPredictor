@@ -1,0 +1,614 @@
+{
+  "schema_version": 1,
+  "note": "由本地 picks/ 存档对账结果导出。不含期号、开奖号码、选号号码、存档文件名与时间戳；逐期顺序已用固定种子打乱。仅保留可重算汇总统计所需的数值。",
+  "source": "picks/ + 历史数据.xlsx，经 settlement.settle 对账",
+  "hash_note": "per_draw 的条数是「存档 × 期」的对账记录数，非去重期数",
+  "modes": {
+    "组选6": {
+      "archives": 3,
+      "period_count": 95,
+      "per_draw": [
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 5,
+          "wins": 0,
+          "cost": 10.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 5,
+          "wins": 1,
+          "cost": 10.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 1,
+          "cost": 60.0,
+          "payout": 173.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 30,
+          "wins": 0,
+          "cost": 60.0,
+          "payout": 0.0
+        }
+      ]
+    },
+    "直选": {
+      "archives": 2,
+      "period_count": 1,
+      "per_draw": [
+        {
+          "bets": 5,
+          "wins": 0,
+          "cost": 10.0,
+          "payout": 0.0
+        },
+        {
+          "bets": 5,
+          "wins": 0,
+          "cost": 10.0,
+          "payout": 0.0
+        }
+      ]
+    }
+  }
+}

@@ -18,6 +18,8 @@
 | 重复号形态（组6/组3/豹子） | 0.31 | 符合（观测 0.7122 / 0.2776 / 0.0102） |
 | 和值分布 | 0.21 | 符合（均值 13.604，理论 13.5） |
 
+**多重比较校正**：九项检验属于同一个检验族，逐项裸判 α=0.05 时，即使数据完全随机，也约有 `1 - 0.95⁹ ≈ 37%` 概率至少出现一项 p<0.05。因此整体结论一律以 **Holm-Bonferroni 校正后**的 p 值为准（`randomness.py` 同时返回原始 p、校正后 p 与两者各自的判定）。本数据集校正后显著项数为 **0**，即没有一项够得上「拒绝随机」的门槛。
+
 数据与「独立均匀随机」完全相容，**不存在可被模型利用的结构**。由此可以严格推出：
 
 > 任意 k 注互不重复的选号，单期中奖概率恒为 k / 1000，与用什么模型、什么算法、什么「规律」选出这 k 注**完全无关**。
@@ -86,10 +88,14 @@ python main.py
 
 ## 命令行工具
 
-`randomness.py` / `audit.py` / `settlement.py` 只依赖标准库 + pandas/numpy，秒级启动；`simulation.py` 因为与模型共用 `rank_combos`，会间接导入 TensorFlow，首次加载较慢。
+`randomness.py` / `audit.py` / `settlement.py` / `reproduce.py` 只依赖标准库 + numpy/pandas/scipy，秒级启动，不需要 TensorFlow；`simulation.py` 因为与模型共用 `rank_combos`，会间接导入 TensorFlow，首次加载较慢。
 
 ```bash
-# 九项随机性检验（默认读 config 指定的数据文件）
+# 一键复现：把 README 里每个数字重算一遍，逐项 PASS/FAIL（干净 clone 即可跑）
+python reproduce.py
+python reproduce.py --json            # 机器可读结果，供 CI 使用
+
+# 九项随机性检验（报告含 Holm 校正后 p 值；默认读 config 指定的数据文件）
 python randomness.py
 
 # 跨存档累积审计：注级命中率、Wilson 区间、单边二项检验、统计功效
@@ -104,7 +110,42 @@ python simulation.py --mode 组选6 --bets 30 --selection random --eval-len 300
 
 # 累计命中率收敛曲线 + 功效曲线（需要 matplotlib，项目 venv 未装）
 python plot_audit.py
+
+# 仅本地维护用：从自己的 picks/ 重新导出脱敏聚合数据
+python export_aggregate.py
+python export_aggregate.py --check    # 校验已发布数据与本地存档是否一致
 ```
+
+---
+
+## 一键复现
+
+README 里的结论全部由真实数据算出，但 `picks/`（个人投注记录，含期号、时间戳、选号）与模型权重出于隐私和体积考虑**不在仓库里**。如果什么都不做，别人 clone 下来只能读结论、不能验结论 —— 这对一个以「严谨」立身的项目是自相矛盾的。
+
+解决办法是 `audit_aggregate.json`：把对账结果压成**纯数值的逐期记录**，每条只有四个数（当期注数 / 中奖注数 / 成本 / 回报）。不含期号、开奖号码、选号、存档文件名、时间戳；逐期顺序还用固定种子打乱过，因此连「第几期命中」也无法对应回真实期号。所有汇总统计（总注数、命中率、Wilson 区间、二项检验 p、净损益、返奖率）都能从这些数值重新算出。
+
+```bash
+git clone https://github.com/kenshine0083-dot/LotteryPredictor.git
+cd LotteryPredictor
+pip install numpy pandas scipy openpyxl
+python reproduce.py
+```
+
+输出 49 项逐项比对，例如：
+
+```
+[PASS] 开奖期数                     重算 7770.0     声明 7770.0
+[PASS] p值 · 第2位期际独立性       重算 0.980107   声明 0.98
+[PASS] Holm 校正后显著项数         重算 0.0        声明 0.0
+[PASS] 组选6 · 投注注数           重算 2860.0     声明 2860.0
+[PASS] 组选6 · 单边二项 p         重算 0.547924   声明 0.548
+[PASS] 组选6 · 净损益             重算 -2779.0    声明 -2779.0
+[PASS] 功效 · 直选 +10% 所需注数  重算 638191.47  声明 638191.0
+```
+
+`reproduce.py` 复用项目本体的代码路径（`randomness.analyze` / `evaluation.wilson_interval` / `audit._binom_p` / `audit.required_samples`），并把 README 的声明值写成 `EXPECTED` 常量。**文档改了数字而脚本没同步，复现就会失败** —— 它就是用来防止结论与数据在后续维护中悄悄漂移的。
+
+需要划清的边界：它验证的是「文档数字能否由仓库内公开数据经同一套代码重算出来」，**不验证统计算法本身是否正确**，后者由 `test_pipeline.py` 覆盖。
 
 ---
 
@@ -142,18 +183,21 @@ python plot_audit.py
 | `evaluation.py` | 玩法规则、注数账目、预算规划 |
 | `settlement.py` | picks 存档、按开奖结果对账 |
 | `simulation.py` | 严格时序回测与历史回放 |
-| `randomness.py` | 九项卡方检验，返回结构化结果 + 文本报告 |
+| `randomness.py` | 九项卡方检验 + Holm 多重比较校正，返回结构化结果与文本报告 |
 | `audit.py` | 跨存档累积审计、Wilson 区间、二项检验、功效分析 |
+| `reproduce.py` | 一键复现：把 README 声明值逐项与仓库数据重算结果比对 |
+| `export_aggregate.py` | 从本地 `picks/` 导出脱敏逐期聚合数据（仅维护用） |
 | `gui.py` | Tkinter 界面；所有耗时操作走后台线程，结果经队列回主线程 |
 | `plot_audit.py` | 审计结果可视化（需 matplotlib） |
-| `test_pipeline.py` | 全链路测试，83 项 |
+| `test_pipeline.py` | 全链路测试 |
 
 运行时产物：
 
 | 路径 | 内容 |
 |---|---|
-| `历史数据.xlsx` | 开奖历史（`Period` / `Numbers`） |
-| `picks/` | 每次「生成 N 注选号」的存档，供单份对账与累积审计读取 |
+| `历史数据.xlsx` | 开奖历史（`Period` / `Numbers`），已随仓库发布 |
+| `audit_aggregate.json` | 脱敏聚合数据，已随仓库发布，供 `reproduce.py` 复现结论 |
+| `picks/` | 每次「生成 N 注选号」的存档，供单份对账与累积审计读取（**不随仓库发布**） |
 | `saved_state/` | 训练好的模型（`model_*.h5`）、scaler 与元数据 |
 | `tuner_dir/` | keras-tuner 的搜索记录 |
 
@@ -183,9 +227,9 @@ python plot_audit.py
 python test_pipeline.py
 ```
 
-83 项，覆盖数据完整性、特征工程、模型训练与状态往返、三种玩法账目、picks 存档与对账、GUI 非阻塞与文案口径、随机性检验、累积审计。
+112 项，覆盖数据完整性、特征工程、模型训练与状态往返、三种玩法账目、picks 存档与对账、GUI 非阻塞与文案口径、随机性检验与 Holm 校正、累积审计、脱敏聚合数据与一键复现。
 
-其中几项是刻意设置的反向断言：**GUI 输出里不允许出现「预测下一期」**；选号区**不允许**把模型打分标成「中奖概率」。这样口径一旦被改回去，测试会直接失败。
+其中几项是刻意设置的反向断言：**GUI 输出里不允许出现「预测下一期」**；选号区**不允许**把模型打分标成「中奖概率」；纯随机数据**不允许**被误判为「有结构」；故意篡改 README 声明的数字时，一键复现**必须**失败。这样口径或结论一旦被改回去，测试会直接失败。
 
 ---
 

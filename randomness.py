@@ -9,7 +9,10 @@
 - 横截面依赖：三位之间是否独立
 - 时间依赖：期与期之间是否独立、重复号形态与和值是否符合理论分布
 
-结果全部 p > 0.05 即表示数据与随机假设相容。
+九项检验构成同一个检验族，逐项以 α=0.05 裸判会产生累积误判：
+即使数据完全随机，至少一项 p<0.05 的概率也有 1-0.95^9 ≈ 37%。
+因此整体结论一律以 Holm-Bonferroni 校正后的 p 值为准（控制族错误率 FWER）。
+单项原始 p 值仍保留，供诊断使用，但不作为「数据有结构」的证据。
 
 独立运行：
     python randomness.py
@@ -28,6 +31,25 @@ ALPHA = 0.05
 def _chi2_sf(stat, dof):
     from scipy import stats
     return float(stats.chi2.sf(stat, dof))
+
+
+def holm_adjust(p_values):
+    """Holm-Bonferroni step-down 校正，返回与输入同序的校正后 p 值。
+
+    排序后第 rank 小的 p 值乘以 (m - rank)，再取前缀最大值保证单调，
+    最后截断到 1。相比 Bonferroni 更不保守，且同样把 FWER 控制在 α 以下。
+    """
+    p = np.asarray(p_values, dtype=float)
+    m = len(p)
+    if m == 0:
+        return p.copy()
+    order = np.argsort(p, kind='stable')
+    adjusted = np.empty(m, dtype=float)
+    running = 0.0
+    for rank, idx in enumerate(order):
+        running = max(running, (m - rank) * p[idx])
+        adjusted[idx] = min(1.0, running)
+    return adjusted
 
 
 def analyze(data):
@@ -108,36 +130,66 @@ def analyze(data):
     add('和值分布', stat, 27, _chi2_sf(stat, 27),
         '均值 %.3f（理论 13.5）' % sums.mean())
 
-    return {'n': n, 'tests': tests, 'alpha': ALPHA,
-            'all_pass': all(t['pass'] for t in tests)}
+    # ---- 多重比较校正：九项检验属于同一族，整体结论必须控制 FWER ----
+    p_holm = holm_adjust([t['p'] for t in tests])
+    for t, adj in zip(tests, p_holm):
+        t['p_holm'] = float(adj)
+        t['pass_holm'] = bool(adj > ALPHA)
+
+    m = len(tests)
+    n_nominal = sum(1 for t in tests if not t['pass'])
+    n_holm = sum(1 for t in tests if not t['pass_holm'])
+    return {
+        'n': n, 'tests': tests, 'alpha': ALPHA, 'n_tests': m,
+        'correction': 'holm',
+        'familywise_error_raw': 1.0 - (1.0 - ALPHA) ** m,
+        'n_nominal': n_nominal,       # 裸判显著项数
+        'n_holm': n_holm,             # 校正后仍显著的项数
+        # all_pass 为整体结论（校正后），all_pass_raw 保留逐项裸判结果供对照
+        'all_pass': n_holm == 0,
+        'all_pass_raw': n_nominal == 0,
+    }
 
 
 def format_report(result):
     """检验结果 → 可读文本报告。"""
     if not result:
         return '【随机性检验】无数据'
-    lines = ['=' * 66,
-             f"开奖数据随机性检验（{result['n']} 期）",
-             '=' * 66,
-             f"{'检验项':<24}{'卡方':>10}{'自由度':>8}{'p值':>9}{'结论':>8}"]
-    lines.append('-' * 66)
+    n_tests = result.get('n_tests', len(result['tests']))
+    lines = ['=' * 74,
+             f"开奖数据随机性检验（{result['n']} 期，{n_tests} 项，Holm 校正）",
+             '=' * 74,
+             f"{'检验项':<24}{'卡方':>10}{'自由度':>8}{'p值':>9}{'Holm p':>10}{'结论':>8}"]
+    lines.append('-' * 74)
     for t in result['tests']:
+        adj = t.get('p_holm', t['p'])
+        ok = t.get('pass_holm', t['pass'])
         lines.append(f"{t['name']:<24}{t['stat']:>10.2f}{t['dof']:>8d}"
-                     f"{t['p']:>9.4f}{'  符合' if t['pass'] else '  异常':>8}")
+                     f"{t['p']:>9.4f}{adj:>10.4f}{'  符合' if ok else '  异常':>8}")
         if t['note']:
             lines.append(f"{'':<24}{t['note']}")
-    lines.append('-' * 66)
-    failed = [t['name'] for t in result['tests'] if not t['pass']]
+    lines.append('-' * 74)
+    lines.append(f"多重比较：{n_tests} 项逐项裸判至少一项误报的概率约 "
+                 f"{result.get('familywise_error_raw', 0) * 100:.0f}%；"
+                 f"结论列采用 Holm 校正后 p 值（FWER ≤ α={result['alpha']}）。")
+    failed = [t['name'] for t in result['tests']
+              if not t.get('pass_holm', t['pass'])]
+    n_nominal = result.get('n_nominal', 0)
     if failed:
-        lines.append(f"有 {len(failed)} 项检验显著（{('、'.join(failed))}）。")
-        lines.append('这可能是真实结构，也可能是多重比较下的偶然结果——'
-                     '注意 9 项同时检验时，即使数据完全随机，'
-                     '也约有 37% 概率至少出现一项 p<0.05。')
-    else:
-        lines.append('全部 9 项检验 p > 0.05，数据与「独立均匀随机」假设完全相容。')
+        lines.append(f"校正后仍有 {len(failed)} 项显著：{'、'.join(failed)}。")
+        lines.append('这是拒绝「独立均匀随机」的统计证据，需进一步核查数据来源。')
+    elif n_nominal:
+        lines.append(f"裸判有 {n_nominal} 项 p<0.05，但 Holm 校正后均不显著——"
+                     '属于多重比较下的偶然波动，不构成「数据有结构」的证据。')
+        lines.append('整体结论：数据与「独立均匀随机」假设相容。')
         lines.append('含义：不存在可被模型利用的结构。任何选号方式的单期中奖概率')
         lines.append('都是 k/1000（k 为互不重复的注数），与选号策略无关。')
-    lines.append('=' * 66)
+    else:
+        lines.append(f"全部 {n_tests} 项检验原始 p 与 Holm 校正后 p 均 > "
+                     f"{result['alpha']}，数据与「独立均匀随机」假设完全相容。")
+        lines.append('含义：不存在可被模型利用的结构。任何选号方式的单期中奖概率')
+        lines.append('都是 k/1000（k 为互不重复的注数），与选号策略无关。')
+    lines.append('=' * 74)
     return '\n'.join(lines)
 
 

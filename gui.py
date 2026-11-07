@@ -390,11 +390,15 @@ class LotteryPredictorGUI:
         report = randomness.format_report(result)
         for line in report.splitlines():
             self._log(line)
-        n_fail = sum(1 for t in result['tests'] if not t['pass'])
-        verdict = "全部符合随机" if n_fail == 0 else f"{n_fail} 项异常"
+        n_holm = result.get('n_holm', 0)
+        n_nominal = result.get('n_nominal', 0)
+        verdict = ("全部符合随机（Holm 校正后）" if n_holm == 0
+                   else f"Holm 校正后仍有 {n_holm} 项显著")
+        extra = ("" if n_nominal == 0 or n_holm
+                 else f"；裸判有 {n_nominal} 项 p<0.05，属多重比较波动，已校正")
         self.update_queue.put(lambda: self.result_text.insert(
-            tk.END, f"\n【随机性检验】{result['n']} 期数据，{verdict}。"
-                    f"若全部符合随机，则任何选号方式的命中率都是 k/1000\n"))
+            tk.END, f"\n【随机性检验】{result['n']} 期数据，{verdict}{extra}。"
+                    f"若整体符合随机，则任何选号方式的命中率都是 k/1000\n"))
         self.progress_value = 100
         self._update_progress()
 

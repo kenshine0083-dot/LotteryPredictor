@@ -775,22 +775,50 @@ def main():
     except Exception as e:
         print('WARN | 入口冒烟跳过:', e)
 
-    # ---- 随机性检验 ----
-    # 注：9 项检验各以 α=0.05 判定，纯随机数据约有 1-0.95^9≈37% 概率至少一项误判，
-    # 所以「全部通过」不能当作普适定律断言，这里固定随机种子做回归基线。
+    # ---- 随机性检验 + Holm 多重比较校正 ----
     import randomness
     rng = np.random.default_rng(20261107)
     fake_random = rng.integers(0, 10, size=(4000, 3))
     res_r = randomness.analyze(fake_random)
-    check('随机性检验:纯随机数据(固定种子)全部通过', res_r['all_pass'],
-          '异常=' + str([t['name'] for t in res_r['tests'] if not t['pass']]))
+    check('随机性检验:纯随机数据整体相容(Holm)', res_r['all_pass'])
+
+    # Holm step-down 的确定性回归：排序后逐项乘 (m-rank)，取前缀最大值并截断到 1
+    adj = randomness.holm_adjust([0.01, 0.04, 0.03, 0.9, 0.8])
+    check('Holm校正:step-down结果精确匹配',
+          np.allclose(adj, [0.05, 0.12, 0.12, 1.0, 1.0]),
+          [round(float(x), 4) for x in adj])
+    check('Holm校正:校正后p不小于原始p',
+          bool(np.all(adj >= np.array([0.01, 0.04, 0.03, 0.9, 0.8]))))
+    check('Holm校正:结果截断到1', bool(np.all(adj <= 1.0)))
+    check('Holm校正:空输入不报错', len(randomness.holm_adjust([])) == 0)
+
+    # 裸判误报应被校正吸收：纯随机数据不应再被判成「有结构」
+    false_positives = []
+    for seed in (1, 7, 42, 20261107):
+        r = randomness.analyze(np.random.default_rng(seed).integers(
+            0, 10, size=(4000, 3)))
+        false_positives.append((seed, r['n_nominal'], r['n_holm'], r['all_pass']))
+    check('Holm校正:纯随机数据无一被误判为有结构',
+          all(n_holm == 0 and ok for _, _, n_holm, ok in false_positives)
+          and any(n_raw > 0 for _, n_raw, _, _ in false_positives),
+          str(false_positives))
+    check('Holm校正:族错误率符合理论值',
+          abs(res_r['familywise_error_raw'] - (1 - 0.95 ** 9)) < 1e-12,
+          round(res_r['familywise_error_raw'], 4))
+    check('Holm校正:结果含逐项p_holm与pass_holm',
+          all('p_holm' in t and 'pass_holm' in t and t['p_holm'] >= t['p']
+              for t in res_r['tests']))
 
     fake_biased = rng.integers(0, 10, size=(4000, 3))
     fake_biased[:, 0] = rng.choice(10, size=4000, p=[0.3] + [0.7 / 9] * 9)
     res_b = randomness.analyze(fake_biased)
-    check('随机性检验:偏斜数据被检出',
+    check('随机性检验:偏斜数据被检出(原始p)',
           any((not t['pass']) and '第1位数字均匀性' in t['name'] for t in res_b['tests']))
-    check('随机性检验:报告含结论声明', 'k/1000' in randomness.format_report(res_r))
+    check('Holm校正:真实偏斜校正后仍显著', res_b['n_holm'] >= 1,
+          f"Holm显著 {res_b['n_holm']} 项")
+    report_r = randomness.format_report(res_r)
+    check('随机性检验:报告含结论声明', 'k/1000' in report_r)
+    check('随机性检验:报告标注Holm校正', 'Holm' in report_r and '37%' in report_r)
     try:
         randomness.analyze(np.zeros((10, 3), dtype=int))
         small_ok = False
@@ -839,6 +867,72 @@ def main():
         check('picks存档:旧文件仍可加载', ST.load_picks(p)['mode'] == '组选6')
     finally:
         shutil.rmtree(tmpd, ignore_errors=True)
+
+    # ---- 脱敏聚合数据与一键复现 ----
+    import re
+    import reproduce
+    from export_aggregate import summarize_payload
+
+    agg_path = BASE / 'audit_aggregate.json'
+    check('复现:聚合数据文件已随仓库发布', agg_path.exists())
+    agg_raw = agg_path.read_text(encoding='utf-8') if agg_path.exists() else ''
+    leaks = (re.findall(r'picks_\d+', agg_raw)
+             + re.findall(r'20\d\d-\d\d-\d\d', agg_raw)
+             + re.findall(r'\b\d{5}\b', agg_raw))
+    check('复现:聚合数据不含期号/时间戳/文件名', bool(agg_raw) and not leaks,
+          leaks[:3])
+    if agg_raw:
+        agg = json.loads(agg_raw)
+        check('复现:聚合数据schema版本', agg.get('schema_version') == 1)
+        all_rows = [row for blk in agg['modes'].values() for row in blk['per_draw']]
+        check('复现:逐期记录只含四个数值字段',
+              bool(all_rows) and all(
+                  set(row) == {'bets', 'wins', 'cost', 'payout'} for row in all_rows),
+              f'{len(all_rows)} 条')
+        s6 = summarize_payload(agg)['组选6']
+        check('复现:脱敏数据可重算出真实账目',
+              s6['bets'] == 2860 and s6['wins'] == 17
+              and abs(s6['pnl'] + 2779) < 1e-6
+              and abs(s6['p_value'] - 0.548) < 0.001,
+              f"{s6['bets']}注/{s6['wins']}中/p={s6['p_value']:.4f}")
+
+    rec = reproduce.Recorder()
+    reproduce.check_randomness(rec)
+    reproduce.check_audit(rec)
+    n_pass = sum(1 for i in rec.items if i['ok'])
+    check('复现:README声明值逐项可重算',
+          rec.passed and len(rec.items) >= 45,
+          f'{n_pass}/{len(rec.items)} 项')
+
+    # 文档漂移必须能被检出（把 2860 注改成 2861 注）
+    expected = reproduce.EXPECTED['audit']['组选6']['bets']
+    try:
+        reproduce.EXPECTED['audit']['组选6']['bets'] = 2861
+        drift = reproduce.Recorder()
+        reproduce.check_audit(drift)
+        check('复现:文档数字漂移会被检出', not drift.passed,
+              [i['name'] for i in drift.items if not i['ok']][:2])
+    finally:
+        reproduce.EXPECTED['audit']['组选6']['bets'] = expected
+    restored = reproduce.Recorder()
+    reproduce.check_audit(restored)
+    check('复现:篡改后恢复不影响后续', restored.passed)
+
+    # 一键复现不得拖入 TensorFlow / 模型代码（干净 clone 也能跑）。
+    # 用 AST 检查真实 import 语句，不能只搜源码文本——文档字符串里
+    # 「不需要 TensorFlow」这句话会被误判成依赖。
+    import ast
+    tree = ast.parse((BASE / 'reproduce.py').read_text(encoding='utf-8'))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(a.name.split('.')[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split('.')[0])
+    banned = {'tensorflow', 'keras', 'lottery_model', 'simulation', 'keras_tuner'}
+    check('复现:不依赖TensorFlow与模型模块',
+          not (imported & banned),
+          '顶层导入=' + ', '.join(sorted(imported)))
 
     fails = [n for n, ok2 in RESULTS if not ok2]
     print()
