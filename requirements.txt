@@ -1,0 +1,10 @@
+# 需 Python 3.8-3.11；本项目 .venv 为 Python 3.8.8，系统 Python 3.13 无法安装 TF 2.13
+pandas==2.0.3
+numpy==1.24.3
+scikit-learn==1.3.2
+scipy==1.10.1
+tensorflow==2.13.0
+keras-tuner==1.4.7
+requests==2.32.3
+openpyxl==3.1.5
+tenacity==9.0.0

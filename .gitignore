@@ -1,0 +1,26 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- 可重新生成的产物 ----
+# 训练好的模型权重与 scaler（体积大、可重训）
+saved_state/
+# keras-tuner 的搜索记录（1.7 GB，纯本地实验痕迹）
+tuner_dir/
+# 迁移实验的检查点与缓存的概率矩阵（约 8 MB，可重训生成）
+kronos_migration/checkpoints/
+kronos_migration/train_log.txt
+
+# ---- 个人数据 ----
+# 真实投注存档：含期号、时间戳、注数与成本，属于个人行为记录，不外发
+picks/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

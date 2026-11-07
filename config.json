@@ -1,0 +1,5 @@
+{
+    "fetch_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=350133&provinceId=0&pageSize={page_size}&pageNo={page_no}&isVerify=1",
+    "default_file_path": "历史数据.xlsx",
+    "save_dir": "saved_state"
+}
