@@ -156,14 +156,14 @@ def _binom_p(w, n, p0):
         return 0.5 * (1 - erf((w - 0.5 - mu) / (sd * sqrt(2))))
 
 
-def format_audit(summary, errors=None, picks_total=None):
-    """汇总 → 可读报告。"""
+def format_audit(summary, errors=None, picks_total=None, title=None):
+    """汇总 → 可读报告。title 仅用于外部数据源标注，默认措辞保持不变。"""
     if not summary:
         head = ('【累积审计】暂无可核对的历史存档（生成选号后需先「更新数据」'
                 '让新开奖入库，才能对账）')
         return head
 
-    lines = ['=' * 66, '累积审计：模型选号 vs 理论随机基线', '=' * 66]
+    lines = ['=' * 66, title or '累积审计：模型选号 vs 理论随机基线', '=' * 66]
     for mode, s in summary.items():
         lo, hi = s['wilson']
         verdict = ('显著优于随机' if s['p_value'] < 0.05 else '与随机无显著差异')

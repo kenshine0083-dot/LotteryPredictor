@@ -1,0 +1,28 @@
+# 安装（可选，纯本地开发约定）：
+#     pip install pre-commit
+#     pre-commit install
+#
+# 项目特有的语义约束（私有目录不能外发、核心链路不能沾 TF、文档资产齐全）
+# 由本地钩子 pre_commit_checks.py 负责；同一个脚本也在 CI 里执行，
+# 因此即使没装 pre-commit，这些检查依然每次 push 都会跑。
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '^历史数据\.xlsx$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=2048']
+
+  - repo: local
+    hooks:
+      - id: project-self-check
+        name: 项目自检（私有文件 / 密钥 / 分层 / 文档资产）
+        entry: python pre_commit_checks.py
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -28,8 +28,10 @@ import numpy as np
 from scipy.stats import binomtest
 
 import evaluation as EV
-from lottery_model import (COMBO_MAX_BETS, SEQUENCE_LENGTH_DEFAULT, iter_combos,
-                           rank_combos, sliding_windows)
+# combos 是纯计算层（无 TF 依赖）：模拟器不再从 lottery_model 顶层导入，
+# 因此轻量版 GUI / 命令行回放无需加载 TensorFlow。
+from combos import (COMBO_MAX_BETS, SEQUENCE_LENGTH_DEFAULT, iter_combos,
+                    rank_combos, sliding_windows)
 
 # 最长连败的单一实现在 evaluation（settlement 也复用）；保留同名导出兼容旧调用。
 longest_false_streak = EV.longest_false_streak

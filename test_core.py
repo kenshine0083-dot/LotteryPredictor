@@ -3,15 +3,16 @@
     python test_core.py
     python test_core.py --json        # 机器可读结果
 
-设计动机：test_pipeline.py 是 128 项全链路测试，顶层 import tkinter，
+设计动机：test_pipeline.py 是 138 项全链路测试，顶层 import tkinter，
 main() 一开始就要 import main / lottery_model（连带 TF 2.13、数百 MB、
 Python 锁死在 3.8–3.11）。把「统计结论」交给 CI 持续验证，不能拖这套东西。
 
 本文件只覆盖纯统计链路：
     paths / evaluation / randomness / settlement / audit /
-    export_aggregate / reproduce
+    export_aggregate / reproduce / audit_external / combos
 并额外守护一条架构约束：这些模块的顶层 import 不得引入重依赖。
 若有人日后在核心模块里顺手加了 `import tensorflow`，CI 会直接变红。
+另含玩法参数化、外部流水审计与项目自检钩子的回归测试。
 
 全量 GUI / 模型测试仍由本地的 test_pipeline.py 负责，两者不互相替代。
 """
@@ -42,12 +43,13 @@ QUIET = False          # --json 时静默，保证 stdout 只有一段合法的 
 
 # 核心模块：只允许顶层 import 标准库与下面四个轻量第三方包
 CORE_MODULES = ('paths.py', 'evaluation.py', 'randomness.py', 'settlement.py',
-                'audit.py', 'export_aggregate.py', 'reproduce.py')
+                'audit.py', 'export_aggregate.py', 'reproduce.py',
+                'audit_external.py', 'combos.py')
 ALLOWED_TOP_LEVEL = {
     'numpy', 'pandas', 'scipy', 'openpyxl',
-    '__future__', 'abc', 'argparse', 'ast', 'collections', 'datetime',
+    '__future__', 'abc', 'argparse', 'ast', 'collections', 'csv', 'datetime',
     'itertools', 'json', 'math', 'os', 'pathlib', 'random', 're', 'shutil',
-    'statistics', 'sys', 'tempfile', 'time', 'typing', 'warnings',
+    'statistics', 'subprocess', 'sys', 'tempfile', 'time', 'typing', 'warnings',
 }
 # 核心模块彼此引用属于分层内依赖，同样允许；取 CORE_MODULES 的文件名（不含 .py）
 ALLOWED_TOP_LEVEL |= {Path(m).stem for m in CORE_MODULES} | {'paths'}
@@ -394,6 +396,145 @@ def test_dependency_boundary():
     check('依赖分层:运行时未加载 TF/tkinter/模型模块', not loaded, str(loaded[:4]))
 
 
+def test_new_features():
+    """玩法参数化、外部流水审计、自检钩子与发布资产。"""
+    import argparse
+    import csv
+    import audit
+    import combos
+    import evaluation as EV
+    import randomness as R
+    import audit_external as AE
+    import pre_commit_checks as PC
+    import reproduce
+
+    # ---- 玩法模板与 CLI 规格 ----
+    check('玩法模板:数量与默认规格',
+          len(R.PROFILES) >= 5
+          and R.PROFILES['arrange3']['digits'] == R.DEFAULT_DIGITS
+          and R.PROFILES['arrange3']['base'] == R.DEFAULT_BASE)
+    check('玩法模板:结果空间自洽且在上限内',
+          all(1 < p['base'] ** p['digits'] <= R.MAX_OUTCOMES
+              for p in R.PROFILES.values())
+          and R.PROFILES['d2-b6']['base'] ** R.PROFILES['d2-b6']['digits'] == 36)
+    ns = argparse.Namespace(profile='d2-b6', digits=None, base=None)
+    check('CLI:模板给出 (2,6)', R.resolve_spec(ns) == (2, 6))
+    ns2 = argparse.Namespace(profile='d2-b6', digits=4, base=None)
+    check('CLI:显式参数覆盖模板', R.resolve_spec(ns2) == (4, 6))
+    try:
+        R.resolve_spec(argparse.Namespace(profile='nope', digits=None, base=None))
+        rejected = False
+    except ValueError:
+        rejected = True
+    check('CLI:未知模板被拒绝', rejected)
+
+    rng = np.random.default_rng(20261107)
+    sample = rng.integers(0, 6, size=(2000, 2))
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpd = Path(tmp)
+        csv_path = tmpd / 'draws.csv'
+        with csv_path.open('w', encoding='utf-8', newline='') as f:
+            w = csv.writer(f)
+            w.writerow(['Period', 'Numbers'])
+            for i, row in enumerate(sample):
+                w.writerow([i, ' '.join(map(str, row))])
+        got = R.load_draws(csv_path, digits=2, base=6)
+        check('CLI:CSV 载入形状与数值一致',
+              got.shape == (2000, 2) and np.array_equal(got, sample))
+        check('CLI:换玩法后结果空间 36',
+              R.analyze(got, digits=2, base=6)['n_outcomes'] == 36)
+        npy_path = tmpd / 'draws.npy'
+        np.save(npy_path, sample)
+        check('CLI:NPY 载入一致',
+              np.array_equal(R.load_draws(npy_path, digits=2, base=6), sample))
+        bad = tmpd / 'bad.csv'
+        bad.write_text('Numbers\n6 1\n', encoding='utf-8')
+        try:
+            R.load_draws(bad, digits=2, base=6)
+            out_rejected = False
+        except ValueError:
+            out_rejected = True
+        check('CLI:越界数字被拒绝', out_rejected)
+        try:
+            R.load_draws(tmpd / 'x.txt', digits=2, base=6)
+            suffix_rejected = False
+        except ValueError:
+            suffix_rejected = True
+        check('CLI:不支持的格式被拒绝', suffix_rejected)
+
+    # ---- combos 纯计算层 ----
+    counts = [len(list(combos.iter_combos(m)))
+              for m in ('直选', '组选6', '组选3')]
+    check('combos:组合数 1000/120/90', counts == [1000, 120, 90], str(counts))
+    check('combos:单注概率与玩法规则一致',
+          all(abs(combos.COMBO_PER_BET[m] / 1000
+                  - EV.PLAY_RULES[m]['hit_per_bet']) < 1e-12
+              for m in combos.COMBO_PER_BET))
+
+    # ---- 外部投注流水审计 ----
+    records = [
+        {'mode': '组选6', 'bets': 5, 'wins': 0, 'cost': 10.0, 'payout': 0.0,
+         'period': '26001'},
+        {'mode': '组选6', 'bets': 5, 'wins': 1, 'cost': 10.0, 'payout': 173.0,
+         'period': '26002'},
+        {'mode': '直选', 'bets': 3, 'wins': 0, 'cost': 6.0, 'payout': 0.0,
+         'period': '26001'},
+    ]
+    result = AE.analyze(records)
+    check('外部审计:总注数与中奖数',
+          result['total_bets'] == 13 and result['total_wins'] == 1)
+    check('外部审计:重复期号被报告',
+          result['duplicate_periods'] == ['26001'])
+    s6 = result['summary']['组选6']
+    check('外部审计:p 值与项目口径一致',
+          abs(s6['p_value'] - audit._binom_p(1, 10, 0.006)) < 1e-12)
+    check('外部审计:净损益按记录累加',
+          abs(s6['pnl'] - 153.0) < 1e-9)
+    check('外部审计:脱敏不含期号与备注',
+          all(set(r) == {'bets', 'wins', 'cost', 'payout'}
+              for r in AE.anonymize(records)))
+    check('外部审计:报告标注外部数据源',
+          '外部投注记录 vs' in AE.format_external_report(result))
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpd = Path(tmp)
+        tpl = tmpd / 'tpl.csv'
+        AE.write_template(tpl)
+        check('外部审计:模板可读回', len(AE.load_records(tpl)) == 2)
+        badf = tmpd / 'bad.csv'
+        badf.write_text('mode,bets,wins,cost,payout\nUnknown,5,0,10,0\n',
+                        encoding='utf-8')
+        try:
+            AE.load_records(badf)
+            row_rejected = False
+        except ValueError:
+            row_rejected = True
+        check('外部审计:非法行被拒绝', row_rejected)
+        dupf = tmpd / 'dup.jsonl'
+        dupf.write_text('\n'.join(json.dumps(r, ensure_ascii=False)
+                                  for r in records), encoding='utf-8')
+        check('外部审计:JSONL 与 CSV 同结构',
+              len(AE.load_records(dupf)) == 3)
+
+    # ---- 自检钩子与发布资产 ----
+    items = PC.run_checks()
+    check('项目自检:6 项静态检查全通过',
+          len(items) >= 6 and all(i['ok'] for i in items),
+          str([(i['name'], i['ok']) for i in items if not i['ok']]))
+    check('发布资产:英文README/变更日志/构建指南/模板齐全',
+          all((BASE / f).is_file() for f in
+              ('README.en.md', 'CHANGELOG.md', 'RELEASE_NOTES.md', 'BUILD.md',
+               'records_template.csv', 'main_lite.py', 'build_exe.py',
+               '.pre-commit-config.yaml')))
+    check('构建脚本:lite 模式显式排除 TensorFlow',
+          'EXCLUDE_LITE' in (BASE / 'build_exe.py').read_text(encoding='utf-8')
+          and 'tensorflow' in (BASE / 'build_exe.py').read_text(encoding='utf-8'))
+    prec = reproduce.Recorder()
+    reproduce.check_game_profile(prec)
+    check('复现:玩法规格声明逐项一致',
+          prec.passed and len(prec.items) >= 5,
+          f'{sum(1 for i in prec.items if i["ok"])}/{len(prec.items)}')
+
+
 def main():
     global QUIET
     parser = argparse.ArgumentParser(description='统计核心测试（CI 用，零 TF / 零 tkinter）')
@@ -403,7 +544,8 @@ def main():
 
     for fn in (test_holm_math, test_randomness, test_randomness_generic,
                test_evaluation, test_audit, test_settlement, test_data_source,
-               test_aggregate_and_reproduce, test_dependency_boundary):
+               test_aggregate_and_reproduce, test_new_features,
+               test_dependency_boundary):
         try:
             fn()
         except Exception as e:

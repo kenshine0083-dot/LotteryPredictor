@@ -1,5 +1,7 @@
 # 排列3 分析与选号工具
 
+[English](./README.en.md) | **简体中文**
+
 [![统计核心 CI](https://github.com/kenshine0083-dot/LotteryPredictor/actions/workflows/ci.yml/badge.svg)](https://github.com/kenshine0083-dot/LotteryPredictor/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![核心依赖 Python](https://img.shields.io/badge/core--python-3.8--3.13-blue.svg)](./requirements-core.txt)
@@ -45,8 +47,8 @@ python main.py
 
 ```bash
 pip install -r requirements-core.txt
-python test_core.py          # 75 项统计核心测试
-python reproduce.py          # 56 项文档数字与数据来源复现
+python test_core.py          # 100 项统计核心测试
+python reproduce.py          # 61 项文档数字、数据来源与玩法规格复现
 ```
 
 依赖分层见 [`requirements-core.txt`](./requirements-core.txt)，CI 在 Python 3.11 与 3.13 两个版本上验证。
@@ -102,7 +104,7 @@ python reproduce.py          # 56 项文档数字与数据来源复现
 
 ## 命令行工具
 
-`randomness.py` / `audit.py` / `settlement.py` / `reproduce.py` / `test_core.py` 只依赖标准库 + numpy/pandas/scipy/openpyxl，秒级启动，不需要 TensorFlow 与 tkinter；`simulation.py` 因为与模型共用 `rank_combos`，会间接导入 TensorFlow，首次加载较慢。
+`randomness.py` / `audit.py` / `settlement.py` / `reproduce.py` / `test_core.py` 只依赖标准库 + numpy/pandas/scipy/openpyxl，秒级启动，不需要 TensorFlow 与 tkinter。组合枚举与排序已抽到无 TF 依赖的 `combos.py`，因此 `simulation.py` 的随机基线回放同样轻量；只有显式的 `--with-ml` 分支才在运行时延迟导入 TensorFlow。
 
 ```bash
 # 一键复现：把 README 里每个数字重算一遍，逐项 PASS/FAIL（干净 clone 即可跑）
@@ -135,6 +137,19 @@ python plot_audit.py
 # 仅本地维护用：从自己的 picks/ 重新导出脱敏聚合数据
 python export_aggregate.py
 python export_aggregate.py --check    # 校验已发布数据与本地存档是否一致
+
+# 换玩法：任意「d 位 / 每位 [0, base)」等概率数字玩法
+python randomness.py --list-profiles
+python randomness.py --profile d2-b6 --data 其他数据.csv
+python randomness.py --digits 2 --base 6 --json > result.json
+
+# 审计自己的投注流水（纯本地，绝不写回仓库发布数据）
+python audit_external.py --template-out my_records.csv
+python audit_external.py --file my_records.csv
+python audit_external.py --file my_records.jsonl --json
+
+# 提交前自检（pre-commit 与 CI 共用同一脚本）
+python pre_commit_checks.py
 ```
 
 ---
@@ -153,7 +168,7 @@ python test_core.py
 python reproduce.py
 ```
 
-输出 56 项逐项比对（其中 7 项核对数据来源与口径），例如：
+输出 61 项逐项比对（其中 7 项核对数据来源、5 项核对玩法规格声明），例如：
 
 ```
 [PASS] 开奖期数                     重算 7770.0     声明 7770.0
@@ -170,6 +185,8 @@ python reproduce.py
 需要划清的边界：它验证的是「文档数字能否由仓库内公开数据经同一套代码重算出来」，**不验证统计算法本身是否正确**，后者由 `test_core.py`（CI 中持续运行）与 `test_pipeline.py`（本地全量）覆盖。
 
 数据来源那 7 项核对的是 `历史数据.xlsx` 自身：期数、期号范围、列名、期号唯一性、开奖号格式是否与 `config.json` → `data_source` 一致，`DATA_SOURCES.md` 是否随仓库发布。数据文件被替换或悄悄改动时，复现会立即失败。
+
+玩法规格那 5 项核对 `config.json` → `game_profile` 与 `randomness.PROFILES` / 默认参数是否一致（位数、每位取值数、结果空间 1000）。换玩法只改命令行参数，不改配置文件；声明与代码不一致时复现会失败。
 
 ---
 
@@ -207,7 +224,8 @@ _图 1：左为组选6 累计命中率随注数收敛到理论值 0.0060（浅�
 | `main.py` | 入口，装配 DataProcessor / LotteryModel / GUI |
 | `paths.py` | 配置读取与相对路径解析（单独抽出，避免 CLI 拖入 TensorFlow） |
 | `data_processor.py` | 读取 xlsx、特征工程、增量更新、状态存取 |
-| `lottery_model.py` | Transformer 编码器 + 三头 softmax；`rank_combos` 按模型打分排序 |
+| `lottery_model.py` | Transformer 编码器 + 三头 softmax；重新导出 `combos.py` 的实现保持旧调用兼容 |
+| `combos.py` | 组合枚举 / 排序 / 滑窗的纯计算层，无 TF 依赖 |
 | `evaluation.py` | 玩法规则、注数账目、预算规划 |
 | `settlement.py` | picks 存档、按开奖结果对账 |
 | `simulation.py` | 严格时序回测与历史回放 |
@@ -217,11 +235,15 @@ _图 1：左为组选6 累计命中率随注数收敛到理论值 0.0060（浅�
 | `export_aggregate.py` | 从本地 `picks/` 导出脱敏逐期聚合数据（仅维护用） |
 | `gui.py` | Tkinter 界面；所有耗时操作走后台线程，结果经队列回主线程 |
 | `plot_audit.py` | 审计结果可视化（需 matplotlib） |
-| `test_pipeline.py` | 本地全链路测试，128 项（需 TF 与显示环境） |
-| `test_core.py` | 统计核心测试，75 项（零 TF / 零 tkinter，CI 入口） |
+| `audit_external.py` | 审计自己的外部投注流水（CSV / JSONL / JSON），复用 `audit.summarize` |
+| `main_lite.py` / `build_exe.py` | 无 TF 的轻量 GUI 入口与 PyInstaller 构建脚本，见 `BUILD.md` |
+| `pre_commit_checks.py` / `.pre-commit-config.yaml` | 6 项静态自检，CI 与本地钩子共用 |
+| `test_pipeline.py` | 本地全链路测试，138 项（需 TF 与显示环境） |
+| `test_core.py` | 统计核心测试，100 项（零 TF / 零 tkinter，CI 入口） |
 | `requirements-core.txt` | 统计核心 / 一键复现 / CI 的最小依赖 |
-| `.github/workflows/ci.yml` | GitHub Actions：核心测试 + 文档数字复现，跨 Python 3.11 / 3.13 |
+| `.github/workflows/ci.yml` | GitHub Actions：自检 + 核心测试 + 文档数字复现，跨 Python 3.11 / 3.13 |
 | `DATA_SOURCES.md` | 数据来源、字段口径、增量更新方式与已知限制 |
+| `README.en.md` / `CHANGELOG.md` / `RELEASE_NOTES.md` | 完整英文文档、变更历史与发布说明草稿 |
 
 运行时产物：
 
@@ -232,6 +254,42 @@ _图 1：左为组选6 累计命中率随注数收敛到理论值 0.0060（浅�
 | `picks/` | 每次「生成 N 注选号」的存档，供单份对账与累积审计读取（**不随仓库发布**） |
 | `saved_state/` | 训练好的模型（`model_*.h5`）、scaler 与元数据 |
 | `tuner_dir/` | keras-tuner 的搜索记录 |
+
+---
+
+## 换玩法、外部流水与分发
+
+### 换玩法
+
+`randomness.analyze(data, digits=3, base=10)` 适用于任意「d 位、每位 `[0, base)`」的等概率数字玩法：理论分布由整数计数精确推出（重复形态用第二类 Stirling 数、和值用卷积），检验项数与自由度随规格变化，`digits=1` 自动跳过自由度为 0 的项。默认 `(3,10)` 的输出与旧版逐位一致。
+
+| 模板 | 规格 | 结果空间 | 用途 |
+|---|---|---|---|
+| `arrange3` | 3 位 / 0-9 | 1000 | 本项目自带数据 |
+| `d1-b10` | 1 位 / 0-9 | 10 | 最小退化用例 |
+| `d2-b6` | 2 位 / 0-5 | 36 | 演示 |
+| `d2-b10` | 2 位 / 0-9 | 100 | 演示 |
+| `d4-b10` | 4 位 / 0-9 | 10000 | 较大空间 |
+
+只有 `arrange3` 对应仓库数据；其余是通用规格模板，不声称对应任何具体彩票品种。数据可来自 `.xlsx` / `.csv`（`Numbers` 列为空格分隔数字串）或 `.npy`（形状 `(期数, digits)`）。`--json` 输出结构化结果便于接入别的工具。`config.json` → `game_profile` 声明默认规格，由 `reproduce.py` 逐项核对。
+
+### 审计自己的投注流水
+
+`audit_external.py` 把你在别处记录的逐期流水（CSV / JSONL / JSON）用**完全相同**的口径核对。字段：`mode`（直选 / 组选6 / 组选3）、`bets`、`wins`、`cost`、`payout` 为必填，`period` / `note` 可选。它把每条记录转成 `settlement.settle()` 的返回结构，直接调用 `audit.summarize()` 与 `format_audit()`，所以命中率、Wilson 区间、单边二项 p、返奖率、功效阈值与项目自身审计逐位一致。
+
+```bash
+python audit_external.py --template-out my_records.csv   # 生成模板（含两行示例）
+python audit_external.py --file my_records.csv
+python audit_external.py --file my_records.jsonl --anonymize-out aggregate.json
+```
+
+隐私边界：只读你显式指定的文件；报告只有聚合数字；`--anonymize-out` 仅导出 `bets/wins/cost/payout` 且固定种子打乱顺序；**绝不写回** `audit_aggregate.json`、`picks/` 或仓库内任何发布数据。仓库里那份脱敏数据只对应项目自身 99 份存档，不该被外部记录污染。
+
+### 开发与分发
+
+- `pip install pre-commit && pre-commit install`：启用格式钩子与 6 项项目自检；CI 跑的是同一个 `pre_commit_checks.py`，没装也能守住约束。
+- `python build_exe.py --mode lite`：构建不含 TensorFlow 的 Windows GUI（本机实测约 190 MiB）；`--mode full` 打完整版。产物在 `dist/`，不进仓库。详见 `BUILD.md`。
+- `CHANGELOG.md` 记录版本历史，`RELEASE_NOTES.md` 是发布正文草稿；本地 tag `v1.0.0` 对应首个可标记的稳定版。
 
 ---
 
@@ -263,11 +321,12 @@ _图 2：左为 k=1/5/10/20 时训练集、样本外测试集与随机基线的�
 
 | 命令 | 项数 | 环境 | 跑在哪 |
 |---|---|---|---|
-| `python test_core.py` | 75 | numpy/pandas/scipy/openpyxl，零 TF、零 tkinter | **CI 每次 push**，Python 3.11 + 3.13 |
-| `python reproduce.py` | 56 | 同上 | **CI 每次 push**，核对 README 声明值与数据来源 |
-| `python test_pipeline.py` | 128 | 完整 `requirements.txt` + 显示环境 | 本地；含 GUI、模型训练与状态往返 |
+| `python test_core.py` | 100 | numpy/pandas/scipy/openpyxl，零 TF、零 tkinter | **CI 每次 push**，Python 3.11 + 3.13 |
+| `python reproduce.py` | 61 | 同上 | **CI 每次 push**，核对 README 声明值、数据来源与玩法规格 |
+| `python pre_commit_checks.py` | 6 | 仅标准库 | **CI 每次 push** + 本地 pre-commit 钩子 |
+| `python test_pipeline.py` | 138 | 完整 `requirements.txt` + 显示环境 | 本地；含 GUI、模型训练与状态往返 |
 
-`test_pipeline.py` 覆盖数据完整性、特征工程、模型训练与状态往返、三种玩法账目、picks 存档与对账（含 `schema_version` 兼容）、GUI 非阻塞与文案口径、随机性检验与 Holm 校正（含换玩法的通用化）、累积审计、脱敏聚合数据、一键复现，以及 README 图片、英文摘要与数据来源说明等文档资产的存在性。
+`test_pipeline.py` 覆盖数据完整性、特征工程、模型训练与状态往返、三种玩法账目、picks 存档与对账（含 `schema_version` 兼容）、GUI 非阻塞与文案口径、随机性检验与 Holm 校正（含换玩法的通用化）、累积审计、脱敏聚合数据、一键复现、轻量入口与外部流水审计，以及 README 图片、英文文档与发布资产的存在性。
 
 其中几项是刻意设置的反向断言：**GUI 输出里不允许出现「预测下一期」**；选号区**不允许**把模型打分标成「中奖概率」；纯随机数据**不允许**被误判为「有结构」；故意篡改 README 声明的数字时，一键复现**必须**失败。这样口径或结论一旦被改回去，测试会直接失败。
 
@@ -275,17 +334,18 @@ _图 2：左为 k=1/5/10/20 时训练集、样本外测试集与随机基线的�
 
 ## 持续集成
 
-[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) 在 push 与 PR 时触发，做五件事：
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) 在 push 与 PR 时触发，做六件事：
 
 1. 只装 `requirements-core.txt`（不装 TensorFlow / keras-tuner / scikit-learn），并显式断言环境里确实没有这些重依赖；
-2. 全仓语法编译，包括 GUI 与模型模块 —— **只编译不导入**，因此不需要 TF 或显示器；
-3. 跑 `test_core.py --json`（75 项统计核心测试）；
-4. 跑 `reproduce.py --json`（56 项，把 README 每个数字与数据来源重算一遍）；
-5. 归档两份 JSON 结果供下载。
+2. 全仓语法编译，包括 GUI 与模型模块 —— **只编译不导入**，因此不需要 TF 或显示器，并核对公开数据、图片、文档与构建资产齐全；
+3. 跑 `pre_commit_checks.py --json`（6 项静态自检：私有文件、密钥字面量、`.gitignore`、依赖边界、编码、文档资产）；
+4. 跑 `test_core.py --json`（100 项统计核心测试）；
+5. 跑 `reproduce.py --json`（61 项，把 README 每个数字、数据来源与玩法规格重算一遍）；
+6. 归档三份 JSON 结果供下载。
 
-**为什么 CI 不跑那 128 项全量测试**：`test_pipeline.py` 顶层 `import tkinter`，且训练用例需要 TF 2.13，而 TF 把 Python 锁死在 3.8–3.11，Linux runner 还得配 xvfb 虚拟显示。把统计结论的持续验证绑在这套重环境上，既不快也不可靠。拆成核心层之后，CI 秒级完成，还能同时跑 Python 3.11 与 3.13 —— 后者正是 TF 装不上的版本，两者都绿才说明统计链路真的与模型环境解耦了。
+**为什么 CI 不跑那 138 项全量测试**：`test_pipeline.py` 顶层 `import tkinter`，且训练用例需要 TF 2.13，而 TF 把 Python 锁死在 3.8–3.11，Linux runner 还得配 xvfb 虚拟显示。把统计结论的持续验证绑在这套重环境上，既不快也不可靠。拆成核心层之后，CI 秒级完成，还能同时跑 Python 3.11 与 3.13 —— 后者正是 TF 装不上的版本，两者都绿才说明统计链路真的与模型环境解耦了。
 
-`test_core.py` 里还有一条架构守卫：它用 AST 检查 `paths / evaluation / randomness / settlement / audit / export_aggregate / reproduce` 的**顶层 import**，一旦有人在这些模块里顺手加了 `import tensorflow`，CI 会直接变红。
+`test_core.py` 里还有一条架构守卫：它用 AST 检查 `paths / evaluation / randomness / settlement / audit / export_aggregate / reproduce / audit_external / combos` 的**顶层 import**，一旦有人在这些模块里顺手加了 `import tensorflow`，CI 会直接变红。
 
 ---
 

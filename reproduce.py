@@ -134,6 +134,27 @@ def check_data_source(rec):
              '全部合法' if ok_fmt else '存在异常行')
 
 
+def check_game_profile(rec):
+    """核对 config 声明的默认玩法规格与 randomness 的模板/默认值一致。"""
+    import randomness as R
+
+    cfg = json.loads((BASE_DIR / 'config.json').read_text(encoding='utf-8'))
+    p = cfg.get('game_profile', {})
+    rec.flag('玩法规格:config 声明完整',
+             all(k in p for k in ('name', 'digits', 'base', 'n_outcomes')),
+             ', '.join(sorted(p)), 'name/digits/base/n_outcomes')
+    rec.eq('玩法规格:默认位数', p.get('digits', -1), R.DEFAULT_DIGITS)
+    rec.eq('玩法规格:每位取值数', p.get('base', -1), R.DEFAULT_BASE)
+    rec.eq('玩法规格:结果空间', p.get('n_outcomes', -1),
+           R.DEFAULT_BASE ** R.DEFAULT_DIGITS)
+    spec = R.PROFILES.get(p.get('name', ''), {})
+    rec.flag('玩法规格:与 PROFILES 模板一致',
+             spec.get('digits') == p.get('digits')
+             and spec.get('base') == p.get('base'),
+             f"{spec.get('digits')}/{spec.get('base')}",
+             f"{p.get('digits')}/{p.get('base')}")
+
+
 def check_randomness(rec):
     import randomness
     data = load_draws()
@@ -211,6 +232,10 @@ def main():
             check_data_source(rec)
         except Exception as e:
             rec.flag('数据来源核对可运行', False, f'{type(e).__name__}: {e}', '成功')
+        try:
+            check_game_profile(rec)
+        except Exception as e:
+            rec.flag('玩法规格核对可运行', False, f'{type(e).__name__}: {e}', '成功')
         try:
             check_randomness(rec)
         except Exception as e:

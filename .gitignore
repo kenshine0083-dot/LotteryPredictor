@@ -18,9 +18,15 @@ kronos_migration/train_log.txt
 # 真实投注存档：含期号、时间戳、注数与成本，属于个人行为记录，不外发
 picks/
 
+# ---- PyInstaller 本地构建产物（二进制不进仓库）----
+dist/
+build/
+*.spec
+
 # ---- CI / 复现脚本的本地产物 ----
 core_result.json
 reproduce_result.json
+precommit_result.json
 .ci_dryrun.sh
 
 # ---- 编辑器 / 系统 ----

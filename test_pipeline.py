@@ -15,6 +15,7 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -953,6 +954,66 @@ def main():
           (BASE / 'DATA_SOURCES.md').is_file()
           and 'data_source' in (BASE / 'config.json').read_text(encoding='utf-8'))
 
+    # ---- 本轮新增：发布资产、玩法参数化、轻量入口、外部流水审计 ----
+    en = BASE / 'README.en.md'
+    check('文档:完整英文README与语言切换',
+          en.is_file() and 'does not predict' in en.read_text(encoding='utf-8')
+          and 'README.en.md' in readme)
+    check('文档:发布资产齐全',
+          all((BASE / f).is_file() for f in
+              ('CHANGELOG.md', 'RELEASE_NOTES.md', 'BUILD.md',
+               'records_template.csv', '.pre-commit-config.yaml',
+               'main_lite.py', 'build_exe.py', 'combos.py')))
+    cfg = json.loads((BASE / 'config.json').read_text(encoding='utf-8'))
+    gp = cfg.get('game_profile', {})
+    check('文档:config 玩法规格与默认值一致',
+          gp.get('digits') == 3 and gp.get('base') == 10
+          and gp.get('n_outcomes') == 1000)
+
+    import combos
+    from lottery_model import iter_combos as lm_iter, rank_combos as lm_rank
+    check('combos:纯计算层与模型重导出同源',
+          list(lm_iter('组选6')) == list(combos.iter_combos('组选6'))
+          and lm_rank is combos.rank_combos)
+    cli = subprocess.run([sys.executable, str(BASE / 'randomness.py'),
+                          '--list-profiles'], capture_output=True, text=True,
+                         encoding='utf-8', errors='replace', timeout=60)
+    check('玩法参数化:CLI 列出模板',
+          cli.returncode == 0 and 'd2-b6' in cli.stdout and 'arrange3' in cli.stdout)
+
+    import main_lite
+    lite = main_lite.LiteModel()
+    logs = []
+    picks = lite.predict_multiple(5, logs.append, '组选6')
+    check('轻量入口:均匀随机选号且标注真实概率',
+          lite.model is not None and picks is not None and len(picks) == 5
+          and len({p['numbers'] for p in picks}) == 5
+          and all(abs(p['score'] - 0.006) < 1e-12 for p in picks)
+          and lite.score_label == '单注理论概率'
+          and any('均匀随机' in s for s in logs))
+    check('轻量入口:不做训练但保持流程可用',
+          lite.train(logs.append, lambda: False) is True
+          and lite.load_state(None, logs.append) is True
+          and lite.save_state(None, logs.append) is True)
+
+    import audit_external as AE
+    with tempfile.TemporaryDirectory() as tmpd:
+        f = Path(tmpd) / 'r.csv'
+        f.write_text('mode,bets,wins,cost,payout,period\n'
+                     '组选6,5,0,10,0,26001\n'
+                     '组选6,5,1,10,173,26002\n', encoding='utf-8')
+        res = AE.analyze(AE.load_records(f))
+        check('外部流水审计:端到端口径一致',
+              res['total_bets'] == 10
+              and abs(res['summary']['组选6']['pnl'] - 153) < 1e-9
+              and '外部投注记录 vs' in AE.format_external_report(res))
+
+    import pre_commit_checks as PC
+    items = PC.run_checks()
+    check('项目自检:静态检查全通过',
+          all(i['ok'] for i in items),
+          str([i['name'] for i in items if not i['ok']]))
+
     rec = reproduce.Recorder()
     reproduce.check_randomness(rec)
     reproduce.check_audit(rec)
@@ -965,6 +1026,11 @@ def main():
     check('复现:数据来源声明与xlsx一致',
           ds.passed and len(ds.items) >= 7,
           f'{sum(1 for i in ds.items if i["ok"])}/{len(ds.items)} 项')
+    gp_rec = reproduce.Recorder()
+    reproduce.check_game_profile(gp_rec)
+    check('复现:玩法规格声明逐项一致',
+          gp_rec.passed and len(gp_rec.items) >= 5,
+          f'{sum(1 for i in gp_rec.items if i["ok"])}/{len(gp_rec.items)} 项')
 
     # 文档漂移必须能被检出（把 2860 注改成 2861 注）
     expected = reproduce.EXPECTED['audit']['组选6']['bets']

@@ -27,11 +27,22 @@ digits=1 时联合独立性与重复形态的自由度退化为 0，自动跳过
 因此整体结论一律以 Holm-Bonferroni 校正后的 p 值为准（控制族错误率 FWER）。
 单项原始 p 值仍保留，供诊断使用，但不作为「数据有结构」的证据。
 
-独立运行：
+独立运行（默认读 config 指定的排列3 数据）：
+
     python randomness.py
+    python randomness.py --profile d2-b6 --data 其他数据.csv
+    python randomness.py --digits 2 --base 6 --json > result.json
+    python randomness.py --list-profiles
+
+自定义数据支持 .xlsx / .csv（Numbers 列为空格分隔的数字串）与 .npy
+（形状 (期数, digits) 的整数数组）。命令行参数只改变「数据规格」，
+不改变统计量定义；非法规格由 analyze() 直接拒绝。
 """
 from __future__ import annotations
 
+import argparse
+import csv
+import json
 import sys
 from pathlib import Path
 
@@ -43,6 +54,17 @@ DEFAULT_DIGITS = 3
 DEFAULT_BASE = 10
 # 联合列联表需要 base**digits 个格子；超过这个规模应改用专门的稀疏检验
 MAX_OUTCOMES = 1_000_000
+
+# 玩法模板：只有 arrange3 对应仓库自带数据，其余是「等概率数字型玩法」的
+# 通用规格模板，用来演示参数化能力，不声称对应任何具体彩票品种。
+PROFILES = {
+    'arrange3': {'digits': 3, 'base': 10,
+                 'label': '3 位 / 每位 0-9（本项目排列3 数据）'},
+    'd1-b10': {'digits': 1, 'base': 10, 'label': '1 位 / 0-9，最小退化用例'},
+    'd2-b6': {'digits': 2, 'base': 6, 'label': '2 位 / 每位 0-5，36 种结果'},
+    'd2-b10': {'digits': 2, 'base': 10, 'label': '2 位 / 每位 0-9，100 种结果'},
+    'd4-b10': {'digits': 4, 'base': 10, 'label': '4 位 / 每位 0-9，10000 种结果'},
+}
 
 
 def _chi2_sf(stat, dof):
@@ -281,18 +303,126 @@ def format_report(result):
     return '\n'.join(lines)
 
 
+def _parse_rows(rows, digits, base):
+    """把「空格分隔的数字串」序列转成 (n, digits) 整数矩阵并校验取值。"""
+    out = []
+    for i, raw in enumerate(rows):
+        tokens = str(raw).replace(',', ' ').split()
+        if len(tokens) != digits:
+            raise ValueError(f'第 {i + 1} 行应有 {digits} 个数字，实际 {len(tokens)} 个')
+        try:
+            vals = [int(t) for t in tokens]
+        except ValueError:
+            raise ValueError(f'第 {i + 1} 行含非整数：{raw!r}')
+        if any(v < 0 or v >= base for v in vals):
+            raise ValueError(f'第 {i + 1} 行数字越界，允许 [0, {base})：{vals}')
+        out.append(vals)
+    return np.asarray(out, dtype=int).reshape(-1, digits)
+
+
+def load_draws(path=None, digits=DEFAULT_DIGITS, base=DEFAULT_BASE,
+               numbers_col='Numbers'):
+    """读取开奖数据 → (期数, digits) 整数矩阵。
+
+    - None / .xlsx：读 config 指定的工作簿，按 Period 升序排列
+    - .csv：读指定列（默认 Numbers），每行是空格分隔的数字串
+    - .npy：直接加载形状为 (期数, digits) 的整数数组
+    """
+    if path is None:
+        from paths import resolve
+        path = resolve('历史数据.xlsx')
+    path = Path(path)
+    suffix = path.suffix.lower()
+    if suffix == '.npy':
+        data = np.asarray(np.load(path))
+    elif suffix == '.xlsx':
+        import pandas as pd
+        df = pd.read_excel(path, engine='openpyxl')
+        if numbers_col not in df.columns:
+            raise ValueError(f'工作簿缺少列 {numbers_col}，现有列：{list(df.columns)}')
+        if 'Period' in df.columns:
+            df = df.sort_values('Period')
+        data = _parse_rows(df[numbers_col].tolist(), digits, base)
+    elif suffix == '.csv':
+        with path.open('r', encoding='utf-8-sig', newline='') as f:
+            reader = csv.DictReader(f)
+            if not reader.fieldnames or numbers_col not in reader.fieldnames:
+                raise ValueError(f'CSV 缺少列 {numbers_col}，现有列：{reader.fieldnames}')
+            data = _parse_rows([r[numbers_col] for r in reader], digits, base)
+    else:
+        raise ValueError(f'不支持的数据格式：{suffix}（支持 .xlsx / .csv / .npy）')
+
+    if data.ndim != 2 or data.shape[1] != digits:
+        raise ValueError(f'数据形状应为 (期数, {digits})，实际 {data.shape}')
+    if not np.issubdtype(data.dtype, np.integer):
+        raise ValueError('数据必须是整数')
+    if data.size and (data.min() < 0 or data.max() >= base):
+        raise ValueError(f'数字越界，允许 [0, {base})')
+    return data
+
+
+def _json_default(obj):
+    """让 numpy 标量/数组能直接进 json.dumps。"""
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, Path):
+        return str(obj)
+    raise TypeError(f'无法序列化：{type(obj).__name__}')
+
+
+def resolve_spec(args):
+    """命令行参数 → (digits, base)；显式参数优先于玩法模板。"""
+    digits, base = DEFAULT_DIGITS, DEFAULT_BASE
+    if args.profile:
+        if args.profile not in PROFILES:
+            raise ValueError(f'未知玩法模板 {args.profile!r}，可用：'
+                             f'{", ".join(sorted(PROFILES))}')
+        digits = PROFILES[args.profile]['digits']
+        base = PROFILES[args.profile]['base']
+    if args.digits is not None:
+        digits = args.digits
+    if args.base is not None:
+        base = args.base
+    return digits, base
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
-    import pandas as pd
-    from paths import resolve
-    df = pd.read_excel(resolve('历史数据.xlsx'), engine='openpyxl')
-    df = df.sort_values('Period')
-    data = np.array([[int(t) for t in str(r).split()] for r in df['Numbers']])
-    print(format_report(analyze(data)))
+    parser = argparse.ArgumentParser(description='开奖数据随机性检验（玩法无关）')
+    parser.add_argument('--data', default=None,
+                        help='数据文件：.xlsx / .csv / .npy；默认读仓库自带工作簿')
+    parser.add_argument('--numbers-col', default='Numbers', help='开奖号所在列名')
+    parser.add_argument('--profile', default=None, help='玩法模板名')
+    parser.add_argument('--digits', type=int, default=None, help='位数（覆盖模板）')
+    parser.add_argument('--base', type=int, default=None, help='每位取值个数（覆盖模板）')
+    parser.add_argument('--list-profiles', action='store_true', help='列出玩法模板并退出')
+    parser.add_argument('--json', action='store_true', help='输出结构化 JSON 而非文本报告')
+    args = parser.parse_args()
+
+    if args.list_profiles:
+        for name, spec in PROFILES.items():
+            print(f"{name:<10} digits={spec['digits']} base={spec['base']}  "
+                  f"结果空间={spec['base'] ** spec['digits']:<8} {spec['label']}")
+        return 0
+
+    try:
+        digits, base = resolve_spec(args)
+        data = load_draws(args.data, digits, base, args.numbers_col)
+        result = analyze(data, digits=digits, base=base)
+    except (ValueError, OSError) as e:
+        print(f'参数或数据错误：{e}', file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=_json_default))
+    else:
+        print(format_report(result))
+    return 0 if result['all_pass'] else 1
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

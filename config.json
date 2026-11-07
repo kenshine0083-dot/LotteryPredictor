@@ -2,6 +2,13 @@
     "fetch_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=350133&provinceId=0&pageSize={page_size}&pageNo={page_no}&isVerify=1",
     "default_file_path": "历史数据.xlsx",
     "save_dir": "saved_state",
+    "game_profile": {
+        "name": "arrange3",
+        "digits": 3,
+        "base": 10,
+        "n_outcomes": 1000,
+        "note": "与 randomness.PROFILES['arrange3'] 一致；换玩法用 --digits/--base 或 --profile，不改本文件"
+    },
     "data_source": {
         "dataset": "中国体育彩票 排列3 历史开奖",
         "provider": "中国体育彩票官方 webapi（webapi.sporttery.cn）",

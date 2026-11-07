@@ -426,9 +426,12 @@ class LotteryPredictorGUI:
         odds = evaluation.play_odds(mode, count)
         per_bet_hit = odds['coverage'] / count          # 单注真实中奖概率
         per_bet_pct = per_bet_hit * 100
-        lines = [f"\n【{count} 注{mode}】互不重复的组合（顺序含模型打分，无预测含义）"]
+        # 完整版显示「模型打分」，轻量版显示「单注理论概率」——都是排序/展示值，
+        # 不是中奖概率，也不改变任何一注的真实覆盖率。
+        label = getattr(self.lottery_model, 'score_label', '模型打分')
+        lines = [f"\n【{count} 注{mode}】互不重复的组合（顺序含{label}，无预测含义）"]
         for i, pick in enumerate(picks, 1):
-            lines.append(f"  {i:>2}. {pick['numbers']}   模型打分 {pick['score']:.5f}")
+            lines.append(f"  {i:>2}. {pick['numbers']}   {label} {pick['score']:.5f}")
         lines.append(f"注：模型打分只用来决定「从全部组合里挑这 {count} 注」，不是中奖概率。"
                      f"每注真实中奖概率恒为 {per_bet_pct:.2f}%（1/{1 / per_bet_hit:.0f}），"
                      f"与打分高低无关。")
