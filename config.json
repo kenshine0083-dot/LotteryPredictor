@@ -1,5 +1,21 @@
 {
     "fetch_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=350133&provinceId=0&pageSize={page_size}&pageNo={page_no}&isVerify=1",
     "default_file_path": "历史数据.xlsx",
-    "save_dir": "saved_state"
+    "save_dir": "saved_state",
+    "data_source": {
+        "dataset": "中国体育彩票 排列3 历史开奖",
+        "provider": "中国体育彩票官方 webapi（webapi.sporttery.cn）",
+        "endpoint": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry",
+        "game_no": "350133",
+        "fields": {
+            "Period": "期号（整数）；文件内降序，读入后按升序组织",
+            "Numbers": "空格分隔的 3 个 0-9 数字，按开奖顺序排列"
+        },
+        "draw_count": 7770,
+        "period_min": 4001,
+        "period_max": 26295,
+        "verified_on": "2026-11-07",
+        "update_method": "DataProcessor.fetch_and_update：按 Period 去重后增量追加，原子写回 xlsx",
+        "terms": "公开接口的查询结果，仅用于统计分析；非官方数据授权，不保证完整性与实时性"
+    }
 }

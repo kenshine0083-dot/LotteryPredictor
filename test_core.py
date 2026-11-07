@@ -3,7 +3,7 @@
     python test_core.py
     python test_core.py --json        # 机器可读结果
 
-设计动机：test_pipeline.py 是 115 项全链路测试，顶层 import tkinter，
+设计动机：test_pipeline.py 是 128 项全链路测试，顶层 import tkinter，
 main() 一开始就要 import main / lottery_model（连带 TF 2.13、数百 MB、
 Python 锁死在 3.8–3.11）。把「统计结论」交给 CI 持续验证，不能拖这套东西。
 
@@ -138,6 +138,64 @@ def test_randomness():
           f"Holm 显著 {rs['n_holm']} 项")
 
 
+def test_randomness_generic():
+    """检验不再写死 3 位 / 0-9：换玩法时理论分布与自由度必须跟着变。"""
+    import randomness as R
+
+    rng = np.random.default_rng(20261107)
+    d3 = rng.integers(0, 10, size=(4000, 3))
+    res3 = R.analyze(d3)
+    check('通用化:默认自由度与旧版一致',
+          [t['dof'] for t in res3['tests']] == [9, 9, 9, 972, 81, 81, 81, 2, 27],
+          str([t['dof'] for t in res3['tests']]))
+    check('通用化:默认结果空间 1000',
+          res3['n_outcomes'] == 1000 and res3['digits'] == 3 and res3['base'] == 10)
+
+    prof, total = R.outcome_profile(3, 10)
+    check('通用化:形态计数 720/270/10',
+          [c for _, c in prof] == [720, 270, 10] and total == 1000)
+    theo = R.sum_distribution(3, 10)
+    check('通用化:和值分布长度 28 且概率和为 1',
+          len(theo) == 28 and abs(theo.sum() - 1.0) < 1e-12)
+
+    d2 = rng.integers(0, 6, size=(4000, 2))
+    res2 = R.analyze(d2, digits=2, base=6)
+    check('通用化:(2,6) 检验项数 7 且结果空间 36',
+          res2['n_tests'] == 7 and res2['n_outcomes'] == 36,
+          f"n_tests={res2['n_tests']}")
+    check('通用化:(2,6) 自由度正确',
+          [t['dof'] for t in res2['tests']] == [5, 5, 25, 25, 25, 1, 10],
+          str([t['dof'] for t in res2['tests']]))
+    check('通用化:(2,6) 纯随机数据整体相容', res2['all_pass'])
+    check('通用化:(2,6) 报告给出 k/36', 'k/36' in R.format_report(res2))
+
+    biased = d2.copy()
+    biased[:, 0] = rng.choice(6, size=4000, p=[0.4] + [0.6 / 5] * 5)
+    check('通用化:(2,6) 人为偏斜校正后仍显著',
+          R.analyze(biased, digits=2, base=6)['n_holm'] >= 1)
+
+    d1 = rng.integers(0, 10, size=(1000, 1))
+    res1 = R.analyze(d1, digits=1, base=10)
+    check('通用化:(1,10) 退化为 3 项且自由度均正',
+          res1['n_tests'] == 3 and all(t['dof'] > 0 for t in res1['tests']))
+
+    def rejects(fn):
+        try:
+            fn()
+            return False
+        except ValueError:
+            return True
+
+    check('通用化:拒绝越界数字',
+          rejects(lambda: R.analyze(np.full((200, 3), 10))))
+    check('通用化:拒绝非法规格与列数不符',
+          rejects(lambda: R.analyze(d3, digits=0, base=10))
+          and rejects(lambda: R.analyze(d3, digits=3, base=1))
+          and rejects(lambda: R.analyze(d3, digits=2, base=10)))
+    check('通用化:拒绝过大的结果空间',
+          rejects(lambda: R.analyze(d3, digits=9, base=10)))
+
+
 def test_evaluation():
     import evaluation as EV
 
@@ -218,6 +276,34 @@ def test_settlement():
               abs(rec['theoretical']['hit_rate'] - EV.play_odds('组选6', 2)['coverage']) < 1e-12)
         check('存档:note 声明打分不是中奖概率',
               '不是中奖概率' in rec['note'] and '与随机选号完全相同' in rec['note'])
+        check('存档:schema_version=2',
+              rec.get('schema_version') == settlement.PICKS_SCHEMA_VERSION == 2)
+        legacy = dict(rec)
+        legacy.pop('schema_version', None)
+        lp = Path(tmp) / 'legacy.json'
+        lp.write_text(json.dumps(legacy, ensure_ascii=False), encoding='utf-8')
+        check('存档:无版本字段的旧文件按 v1 兼容',
+              settlement.load_picks(lp)['schema_version'] == 1)
+        future = dict(rec)
+        future['schema_version'] = 99
+        fp = Path(tmp) / 'future.json'
+        fp.write_text(json.dumps(future, ensure_ascii=False), encoding='utf-8')
+        try:
+            settlement.load_picks(fp)
+            future_rejected = False
+        except ValueError:
+            future_rejected = True
+        check('存档:未来版本被拒绝', future_rejected)
+        malformed = dict(rec)
+        malformed['schema_version'] = '2'
+        mp = Path(tmp) / 'malformed.json'
+        mp.write_text(json.dumps(malformed, ensure_ascii=False), encoding='utf-8')
+        try:
+            settlement.load_picks(mp)
+            type_rejected = False
+        except ValueError:
+            type_rejected = True
+        check('存档:版本字段非整数被拒绝', type_rejected)
         bad = Path(tmp) / 'broken.json'
         bad.write_text('{ not json', encoding='utf-8')
         try:
@@ -228,6 +314,15 @@ def test_settlement():
         check('存档:损坏文件被拒绝', ok)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_data_source():
+    import reproduce
+    rec = reproduce.Recorder()
+    reproduce.check_data_source(rec)
+    check('数据来源:声明与数据文件逐项一致',
+          rec.passed and len(rec.items) >= 7,
+          f'{sum(1 for i in rec.items if i["ok"])}/{len(rec.items)}')
 
 
 def test_aggregate_and_reproduce():
@@ -306,9 +401,9 @@ def main():
     args = parser.parse_args()
     QUIET = args.json
 
-    for fn in (test_holm_math, test_randomness, test_evaluation, test_audit,
-               test_settlement, test_aggregate_and_reproduce,
-               test_dependency_boundary):
+    for fn in (test_holm_math, test_randomness, test_randomness_generic,
+               test_evaluation, test_audit, test_settlement, test_data_source,
+               test_aggregate_and_reproduce, test_dependency_boundary):
         try:
             fn()
         except Exception as e:

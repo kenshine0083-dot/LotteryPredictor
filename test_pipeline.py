@@ -826,6 +826,31 @@ def main():
         small_ok = True
     check('随机性检验:样本过小拒绝', small_ok)
 
+    # ---- 随机性检验的玩法通用化（不再写死 3 位 / 0-9）----
+    check('随机性检验:默认自由度与旧版一致',
+          [t['dof'] for t in res_r['tests']] == [9, 9, 9, 972, 81, 81, 81, 2, 27])
+    d26 = rng.integers(0, 6, size=(4000, 2))
+    r26 = randomness.analyze(d26, digits=2, base=6)
+    check('随机性检验:(2,6)参数化可运行',
+          r26['n_tests'] == 7 and r26['n_outcomes'] == 36
+          and [t['dof'] for t in r26['tests']] == [5, 5, 25, 25, 25, 1, 10])
+    check('随机性检验:(2,6)报告给出k/36',
+          'k/36' in randomness.format_report(r26))
+    b26 = d26.copy()
+    b26[:, 0] = rng.choice(6, size=4000, p=[0.4] + [0.6 / 5] * 5)
+    check('随机性检验:(2,6)偏斜被检出',
+          randomness.analyze(b26, digits=2, base=6)['n_holm'] >= 1)
+    bad_specs = 0
+    for fn in (lambda: randomness.analyze(np.full((200, 3), 10)),
+               lambda: randomness.analyze(np.zeros((200, 3), dtype=int),
+                                          digits=2, base=10),
+               lambda: randomness.analyze(d26, digits=9, base=6)):
+        try:
+            fn()
+        except ValueError:
+            bad_specs += 1
+    check('随机性检验:拒绝越界/形状不符/空间超限', bad_specs == 3)
+
     # ---- 累积审计 ----
     import audit
     n10 = audit.required_samples(0.001, 0.10)
@@ -865,6 +890,24 @@ def main():
         check('picks存档:note含该方案单期概率', '0.60%' in rec['note'],
               rec['note'][:46])
         check('picks存档:旧文件仍可加载', ST.load_picks(p)['mode'] == '组选6')
+        check('picks存档:schema_version=2',
+              rec.get('schema_version') == ST.PICKS_SCHEMA_VERSION == 2)
+        legacy = dict(rec)
+        legacy.pop('schema_version', None)
+        lp = Path(tmpd) / 'legacy.json'
+        lp.write_text(json.dumps(legacy, ensure_ascii=False), encoding='utf-8')
+        check('picks存档:旧文件按v1兼容',
+              ST.load_picks(lp)['schema_version'] == 1)
+        future = dict(rec)
+        future['schema_version'] = 99
+        fp = Path(tmpd) / 'future.json'
+        fp.write_text(json.dumps(future, ensure_ascii=False), encoding='utf-8')
+        try:
+            ST.load_picks(fp)
+            rejected = False
+        except ValueError:
+            rejected = True
+        check('picks存档:未来版本被拒绝', rejected)
     finally:
         shutil.rmtree(tmpd, ignore_errors=True)
 
@@ -896,6 +939,20 @@ def main():
               and abs(s6['p_value'] - 0.548) < 0.001,
               f"{s6['bets']}注/{s6['wins']}中/p={s6['p_value']:.4f}")
 
+    # 文档资产同样要守住：图、英文摘要、数据来源说明不能被悄悄删掉
+    readme = (BASE / 'README.md').read_text(encoding='utf-8')
+    check('文档:README嵌入两张结果图',
+          '](./audit_result.png)' in readme
+          and '](./kronos_migration/kronos_migration_result.png)' in readme)
+    check('文档:两张结果图文件存在',
+          (BASE / 'audit_result.png').is_file()
+          and (BASE / 'kronos_migration' / 'kronos_migration_result.png').is_file())
+    check('文档:README含英文摘要',
+          '## English Summary' in readme and 'does not predict' in readme)
+    check('文档:数据来源说明与config声明',
+          (BASE / 'DATA_SOURCES.md').is_file()
+          and 'data_source' in (BASE / 'config.json').read_text(encoding='utf-8'))
+
     rec = reproduce.Recorder()
     reproduce.check_randomness(rec)
     reproduce.check_audit(rec)
@@ -903,6 +960,11 @@ def main():
     check('复现:README声明值逐项可重算',
           rec.passed and len(rec.items) >= 45,
           f'{n_pass}/{len(rec.items)} 项')
+    ds = reproduce.Recorder()
+    reproduce.check_data_source(ds)
+    check('复现:数据来源声明与xlsx一致',
+          ds.passed and len(ds.items) >= 7,
+          f'{sum(1 for i in ds.items if i["ok"])}/{len(ds.items)} 项')
 
     # 文档漂移必须能被检出（把 2860 注改成 2861 注）
     expected = reproduce.EXPECTED['audit']['组选6']['bets']

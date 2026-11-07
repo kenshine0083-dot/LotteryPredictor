@@ -6,7 +6,8 @@
     python reproduce.py --json     # 机器可读结果，供 CI 使用
 
 它复用项目本体的代码路径（randomness.analyze / evaluation.wilson_interval /
-audit._binom_p / audit.required_samples），从仓库内两份公开数据重算：
+audit._binom_p / audit.required_samples），从仓库内公开文件重算：
+- config.json + DATA_SOURCES.md → 数据来源声明与 xlsx 自身的一致性
 - 历史数据.xlsx           → 七千余期开奖的九项随机性检验（含 Holm 校正）
 - audit_aggregate.json    → 脱敏后的逐期投注数值 → 累积审计账目
 
@@ -99,6 +100,40 @@ def load_draws():
     return data
 
 
+def check_data_source(rec):
+    """核对随仓库发布的数据文件与 config.json / DATA_SOURCES.md 的声明。"""
+    import pandas as pd
+
+    cfg = json.loads((BASE_DIR / 'config.json').read_text(encoding='utf-8'))
+    src = cfg.get('data_source', {})
+    rec.flag('数据来源:config.json 含来源声明',
+             bool(src.get('provider')) and bool(src.get('endpoint')),
+             src.get('provider', '缺失'), '体彩官方 webapi')
+    rec.flag('数据来源:声明接口与 fetch_url 同源',
+             bool(src.get('endpoint'))
+             and src['endpoint'] in cfg.get('fetch_url', ''),
+             src.get('endpoint', '缺失'), 'fetch_url 前缀')
+    doc = BASE_DIR / 'DATA_SOURCES.md'
+    rec.flag('数据来源:说明文档已随仓库发布', doc.is_file(),
+             '存在' if doc.is_file() else '缺失', '存在')
+
+    df = pd.read_excel(EXCEL, engine='openpyxl')
+    rec.eq('数据来源:期数', len(df), src.get('draw_count', -1))
+    rec.flag('数据来源:列名固定为 Period / Numbers',
+             list(df.columns) == ['Period', 'Numbers'], str(list(df.columns)))
+    rec.flag('数据来源:期号唯一且范围与声明一致',
+             bool(df['Period'].is_unique)
+             and int(df['Period'].min()) == src.get('period_min')
+             and int(df['Period'].max()) == src.get('period_max'),
+             f"{int(df['Period'].min())}–{int(df['Period'].max())}")
+    ok_fmt = all(
+        len(parts) == 3 and all(len(t) == 1 and t.isdigit() and 0 <= int(t) <= 9
+                                for t in parts)
+        for parts in (str(x).split() for x in df['Numbers']))
+    rec.flag('数据来源:开奖号均为空格分隔的 3 个 0-9 数字', ok_fmt,
+             '全部合法' if ok_fmt else '存在异常行')
+
+
 def check_randomness(rec):
     import randomness
     data = load_draws()
@@ -172,6 +207,10 @@ def main():
         rec.flag('仓库内数据文件齐全', False, '缺失: ' + ', '.join(missing), '齐全')
     else:
         rec.flag('仓库内数据文件齐全', True, '齐全')
+        try:
+            check_data_source(rec)
+        except Exception as e:
+            rec.flag('数据来源核对可运行', False, f'{type(e).__name__}: {e}', '成功')
         try:
             check_randomness(rec)
         except Exception as e:

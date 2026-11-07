@@ -45,13 +45,13 @@ python main.py
 
 ```bash
 pip install -r requirements-core.txt
-python test_core.py          # 57 项统计核心测试
-python reproduce.py          # 49 项文档数字复现
+python test_core.py          # 75 项统计核心测试
+python reproduce.py          # 56 项文档数字与数据来源复现
 ```
 
 依赖分层见 [`requirements-core.txt`](./requirements-core.txt)，CI 在 Python 3.11 与 3.13 两个版本上验证。
 
-**数据**：`历史数据.xlsx`，两列 —— `Period`（期号，降序）、`Numbers`（空格分隔的三位数字）。
+**数据**：`历史数据.xlsx`，两列 —— `Period`（期号，降序）、`Numbers`（空格分隔的三位数字）。来源接口、字段口径、增量更新方式与已知限制见 [`DATA_SOURCES.md`](./DATA_SOURCES.md)；机器可核对的声明在 `config.json` → `data_source`，由 `reproduce.py` 逐项比对。
 
 **配置**：`config.json`
 
@@ -96,7 +96,7 @@ python reproduce.py          # 49 项文档数字复现
 2. **单期中奖概率** —— N 注互不重复时恒为 N × 单注概率，与选号方式无关。
 3. **期望回报** —— 中奖概率 × 单注奖金。返奖率约 52%，即长期亏损率约 48%。
 
-`picks/` 下的每份存档都带 `note` 字段，把这些口径写死在文件里，避免日后翻看时误读。
+`picks/` 下的每份存档都带 `schema_version`（当前 **v2**）与 `note` 字段，把这些口径写死在文件里，避免日后翻看时误读。早期没有版本字段的存档按 v1 读取；高于当前版本的存档会被拒绝，避免用旧代码误读未来的格式。
 
 ---
 
@@ -115,6 +115,9 @@ python test_core.py --json
 
 # 九项随机性检验（报告含 Holm 校正后 p 值；默认读 config 指定的数据文件）
 python randomness.py
+
+# 检验与玩法无关：digits 位、每位 [0, base) 的等概率玩法都能用
+python -c "import numpy as np, randomness as r; d=np.random.default_rng(0).integers(0,6,size=(4000,2)); print(r.format_report(r.analyze(d, digits=2, base=6)))"
 
 # 跨存档累积审计：注级命中率、Wilson 区间、单边二项检验、统计功效
 python audit.py
@@ -150,7 +153,7 @@ python test_core.py
 python reproduce.py
 ```
 
-输出 49 项逐项比对，例如：
+输出 56 项逐项比对（其中 7 项核对数据来源与口径），例如：
 
 ```
 [PASS] 开奖期数                     重算 7770.0     声明 7770.0
@@ -165,6 +168,8 @@ python reproduce.py
 `reproduce.py` 复用项目本体的代码路径（`randomness.analyze` / `evaluation.wilson_interval` / `audit._binom_p` / `audit.required_samples`），并把 README 的声明值写成 `EXPECTED` 常量。**文档改了数字而脚本没同步，复现就会失败** —— 它就是用来防止结论与数据在后续维护中悄悄漂移的。
 
 需要划清的边界：它验证的是「文档数字能否由仓库内公开数据经同一套代码重算出来」，**不验证统计算法本身是否正确**，后者由 `test_core.py`（CI 中持续运行）与 `test_pipeline.py`（本地全量）覆盖。
+
+数据来源那 7 项核对的是 `历史数据.xlsx` 自身：期数、期号范围、列名、期号唯一性、开奖号格式是否与 `config.json` → `data_source` 一致，`DATA_SOURCES.md` 是否随仓库发布。数据文件被替换或悄悄改动时，复现会立即失败。
 
 ---
 
@@ -189,6 +194,10 @@ python reproduce.py
 
 样本量远小于这些数字时，任何「命中率高于理论」都只是随机波动，不构成证据。
 
+![累积审计：命中率收敛与统计功效](./audit_result.png)
+
+_图 1：左为组选6 累计命中率随注数收敛到理论值 0.0060（浅色为 Wilson 95% 区间）；右为以组选6 基线 p=0.0060 计算的功效曲线，标注 +10% / +50% / +100% 优势分别需要约 10.6 万 / 4,738 / 1,328 注，红色虚线是当前累计 2,860 注。由 `plot_audit.py` 生成（需要 matplotlib）。_
+
 ---
 
 ## 模块
@@ -202,16 +211,17 @@ python reproduce.py
 | `evaluation.py` | 玩法规则、注数账目、预算规划 |
 | `settlement.py` | picks 存档、按开奖结果对账 |
 | `simulation.py` | 严格时序回测与历史回放 |
-| `randomness.py` | 九项卡方检验 + Holm 多重比较校正，返回结构化结果与文本报告 |
+| `randomness.py` | 玩法无关的卡方检验（`digits` / `base` 可参数化）+ Holm 多重比较校正 |
 | `audit.py` | 跨存档累积审计、Wilson 区间、二项检验、功效分析 |
 | `reproduce.py` | 一键复现：把 README 声明值逐项与仓库数据重算结果比对 |
 | `export_aggregate.py` | 从本地 `picks/` 导出脱敏逐期聚合数据（仅维护用） |
 | `gui.py` | Tkinter 界面；所有耗时操作走后台线程，结果经队列回主线程 |
 | `plot_audit.py` | 审计结果可视化（需 matplotlib） |
-| `test_pipeline.py` | 本地全链路测试，115 项（需 TF 与显示环境） |
-| `test_core.py` | 统计核心测试，57 项（零 TF / 零 tkinter，CI 入口） |
+| `test_pipeline.py` | 本地全链路测试，128 项（需 TF 与显示环境） |
+| `test_core.py` | 统计核心测试，75 项（零 TF / 零 tkinter，CI 入口） |
 | `requirements-core.txt` | 统计核心 / 一键复现 / CI 的最小依赖 |
 | `.github/workflows/ci.yml` | GitHub Actions：核心测试 + 文档数字复现，跨 Python 3.11 / 3.13 |
+| `DATA_SOURCES.md` | 数据来源、字段口径、增量更新方式与已知限制 |
 
 运行时产物：
 
@@ -239,6 +249,10 @@ python reproduce.py
 
 **结论是否证的**，三重证据：数据无结构（9 项 p > 0.05）；样本外命中率是随机基线的 0.64–0.87 倍（p 值 0.78–0.89）；训练集 k=1 命中率 10.24%（102 倍）而测试集 0.06%（0.64 倍）—— 模型是在**记忆**，不是在学习。
 
+![Kronos 迁移实验：训练集记忆与九项随机性检验](./kronos_migration/kronos_migration_result.png)
+
+_图 2：左为 k=1/5/10/20 时训练集、样本外测试集与随机基线的命中率（对数轴，k=1 分别为 10.24% / 0.06% / 0.10%）；右为 7,770 期数据的九项随机性检验 p 值，全部高于 0.05 显著性阈值。_
+
 保留这套代码是因为三个工具仍有用：`analyze_randomness.py`（换任何玩法都能验数据）、`train_vs_test.py`（判断「真学到 vs 假学到」的通用框架）、`integration.py`（与 `predict_multiple` 同签名的对接层）。
 
 ---
@@ -249,11 +263,11 @@ python reproduce.py
 
 | 命令 | 项数 | 环境 | 跑在哪 |
 |---|---|---|---|
-| `python test_core.py` | 57 | numpy/pandas/scipy/openpyxl，零 TF、零 tkinter | **CI 每次 push**，Python 3.11 + 3.13 |
-| `python reproduce.py` | 49 | 同上 | **CI 每次 push**，核对 README 声明值 |
-| `python test_pipeline.py` | 115 | 完整 `requirements.txt` + 显示环境 | 本地；含 GUI、模型训练与状态往返 |
+| `python test_core.py` | 75 | numpy/pandas/scipy/openpyxl，零 TF、零 tkinter | **CI 每次 push**，Python 3.11 + 3.13 |
+| `python reproduce.py` | 56 | 同上 | **CI 每次 push**，核对 README 声明值与数据来源 |
+| `python test_pipeline.py` | 128 | 完整 `requirements.txt` + 显示环境 | 本地；含 GUI、模型训练与状态往返 |
 
-`test_pipeline.py` 覆盖数据完整性、特征工程、模型训练与状态往返、三种玩法账目、picks 存档与对账、GUI 非阻塞与文案口径、随机性检验与 Holm 校正、累积审计、脱敏聚合数据与一键复现。
+`test_pipeline.py` 覆盖数据完整性、特征工程、模型训练与状态往返、三种玩法账目、picks 存档与对账（含 `schema_version` 兼容）、GUI 非阻塞与文案口径、随机性检验与 Holm 校正（含换玩法的通用化）、累积审计、脱敏聚合数据、一键复现，以及 README 图片、英文摘要与数据来源说明等文档资产的存在性。
 
 其中几项是刻意设置的反向断言：**GUI 输出里不允许出现「预测下一期」**；选号区**不允许**把模型打分标成「中奖概率」；纯随机数据**不允许**被误判为「有结构」；故意篡改 README 声明的数字时，一键复现**必须**失败。这样口径或结论一旦被改回去，测试会直接失败。
 
@@ -265,11 +279,11 @@ python reproduce.py
 
 1. 只装 `requirements-core.txt`（不装 TensorFlow / keras-tuner / scikit-learn），并显式断言环境里确实没有这些重依赖；
 2. 全仓语法编译，包括 GUI 与模型模块 —— **只编译不导入**，因此不需要 TF 或显示器；
-3. 跑 `test_core.py --json`（57 项统计核心测试）；
-4. 跑 `reproduce.py --json`（49 项，把 README 每个数字重算一遍）；
+3. 跑 `test_core.py --json`（75 项统计核心测试）；
+4. 跑 `reproduce.py --json`（56 项，把 README 每个数字与数据来源重算一遍）；
 5. 归档两份 JSON 结果供下载。
 
-**为什么 CI 不跑那 115 项全量测试**：`test_pipeline.py` 顶层 `import tkinter`，且训练用例需要 TF 2.13，而 TF 把 Python 锁死在 3.8–3.11，Linux runner 还得配 xvfb 虚拟显示。把统计结论的持续验证绑在这套重环境上，既不快也不可靠。拆成核心层之后，CI 秒级完成，还能同时跑 Python 3.11 与 3.13 —— 后者正是 TF 装不上的版本，两者都绿才说明统计链路真的与模型环境解耦了。
+**为什么 CI 不跑那 128 项全量测试**：`test_pipeline.py` 顶层 `import tkinter`，且训练用例需要 TF 2.13，而 TF 把 Python 锁死在 3.8–3.11，Linux runner 还得配 xvfb 虚拟显示。把统计结论的持续验证绑在这套重环境上，既不快也不可靠。拆成核心层之后，CI 秒级完成，还能同时跑 Python 3.11 与 3.13 —— 后者正是 TF 装不上的版本，两者都绿才说明统计链路真的与模型环境解耦了。
 
 `test_core.py` 里还有一条架构守卫：它用 AST 检查 `paths / evaluation / randomness / settlement / audit / export_aggregate / reproduce` 的**顶层 import**，一旦有人在这些模块里顺手加了 `import tensorflow`，CI 会直接变红。
 
@@ -282,6 +296,18 @@ python reproduce.py
 3. 具体号码的视觉冲击极强，一旦显示就会被当成「预测」，而它实际上等价于随机选号。
 
 所以号码只出现在「生成 N 注选号」里，并且与真实概率、成本、期望亏损一起出现。
+
+---
+
+## English Summary
+
+**This tool does not predict lottery numbers.** It is a statistical audit toolkit for the Chinese "排列3" (3-digit) lottery: it generates distinct candidate combinations, computes the exact win probability and expected loss of every bet, tests whether the draw history is distinguishable from independent uniform randomness, and audits its own long-run record.
+
+Nine chi-square tests on 7,770 real draws all have p > 0.05. Because they form one family (about 37% chance of at least one false positive at α=0.05), the overall conclusion uses Holm-Bonferroni adjusted p-values; **zero** tests remain significant. Under this null, any k distinct bets have a single-draw win probability of exactly k/1,000 regardless of how those bets were chosen. All three bet types return about 52% of the stake in expectation, so buying more bets only increases the expected loss.
+
+`kronos_migration/` is a falsification experiment: a 0.54M-parameter Kronos-style autoregressive Transformer reaches 10.24% top-1 hit rate on the training set but 0.06% out of sample (0.64× the random baseline). It memorises; it does not learn. The randomness tests are parameterised by `digits` and `base`, so the same code works for any equal-probability digital lottery.
+
+Every number in this README is reproducible: `pip install -r requirements-core.txt`, then `python reproduce.py` (56 checks, no TensorFlow). Data provenance is documented in [`DATA_SOURCES.md`](./DATA_SOURCES.md). MIT licensed. Not betting advice; lottery play has negative expected value.
 
 ---
 

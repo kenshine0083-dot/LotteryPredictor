@@ -6,6 +6,10 @@
 期号规则：只比较 Period > base_period，不假设 base_period+1 存在
 （排列3 期号跨年跳变，如 25099 -> 26001）。
 
+存档版本：v2 起显式写出 schema_version 字段；v1 是早期没有该字段的存档，
+load_picks 会将其识别为 v1 并继续支持（字段集合相同，只是缺版本号）。
+遇到高于当前版本的 schema_version 一律拒绝，避免用旧代码误读未来的格式。
+
 独立运行：
     python settlement.py --file picks/picks_xxx.json
 """
@@ -22,6 +26,9 @@ import evaluation as EV
 
 BASE_DIR = Path(__file__).resolve().parent
 PICKS_DIR = BASE_DIR / 'picks'
+# 当前写出的存档格式版本；v1 = 早期无版本字段的存档（仍可读取）
+PICKS_SCHEMA_VERSION = 2
+LEGACY_SCHEMA_VERSION = 1
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 except Exception:
@@ -40,6 +47,7 @@ def save_picks(base_period, mode, picks, stake_per_bet=2.0, dir_path=None):
         raise ValueError(f'未知玩法：{mode}')
     odds = EV.play_odds(mode, len(picks), stake_per_bet)
     record = {
+        'schema_version': PICKS_SCHEMA_VERSION,
         'base_period': int(base_period),
         'mode': mode,
         'stake_per_bet': stake_per_bet,
@@ -68,7 +76,11 @@ def save_picks(base_period, mode, picks, stake_per_bet=2.0, dir_path=None):
 
 
 def load_picks(path):
-    """读取选号文件，损坏或字段缺失时抛带原因的 ValueError。"""
+    """读取选号文件，损坏、字段缺失或版本不受支持时抛带原因的 ValueError。
+
+    缺少 schema_version 的旧存档按 v1 处理，并在返回值中补上版本字段，
+    这样调用方可以统一按 record['schema_version'] 判断，而不必到处兜底。
+    """
     path = Path(path)
     try:
         record = json.loads(path.read_text(encoding='utf-8'))
@@ -77,6 +89,13 @@ def load_picks(path):
     for key in ('base_period', 'mode', 'picks'):
         if key not in record:
             raise ValueError(f'选号文件缺少字段 {key}：{path}')
+    version = record.get('schema_version', LEGACY_SCHEMA_VERSION)
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise ValueError(f'选号文件 schema_version 非法：{version!r}（{path}）')
+    if not LEGACY_SCHEMA_VERSION <= version <= PICKS_SCHEMA_VERSION:
+        raise ValueError(f'选号文件 schema_version={version} 不受支持'
+                         f'（当前支持 {LEGACY_SCHEMA_VERSION}–{PICKS_SCHEMA_VERSION}）：{path}')
+    record['schema_version'] = version
     if record['mode'] not in EV.PLAY_RULES:
         raise ValueError(f'选号文件玩法非法：{record["mode"]}')
     return record

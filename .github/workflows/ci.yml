@@ -1,7 +1,7 @@
 name: 统计核心 CI
 
 # 只验证纯统计链路：零 TensorFlow、零 tkinter、零显示环境。
-# 全量 GUI / 模型测试（test_pipeline.py，115 项）需要 TF 2.13 与本地显示环境，
+# 全量 GUI / 模型测试（test_pipeline.py，128 项）需要 TF 2.13 与本地显示环境，
 # 留在本地运行；CI 不装那几百 MB，因此能跨 Python 版本且秒级出结果。
 on:
   push:
@@ -48,15 +48,17 @@ jobs:
           assert not heavy, 'CI 环境被污染，依赖分层失效'
           "
 
-      - name: 确认仓库内公开数据齐全（含中文文件名）
+      - name: 确认公开数据、文档资产与图片齐全（含中文文件名）
         run: |
           test -f "历史数据.xlsx" && test -f audit_aggregate.json
-          ls -l "历史数据.xlsx" audit_aggregate.json
+          test -f config.json && test -f DATA_SOURCES.md
+          test -f audit_result.png && test -f kronos_migration/kronos_migration_result.png
+          ls -l "历史数据.xlsx" audit_aggregate.json audit_result.png kronos_migration/kronos_migration_result.png
 
       - name: 全仓语法编译（含 GUI / 模型模块，只编译不导入）
         run: python -m compileall -q . -x '(^|/)(\.git|__pycache__|\.venv|tuner_dir|saved_state|picks)(/|$)'
 
-      - name: 统计核心测试（57 项）
+      - name: 统计核心测试（75 项）
         run: |
           python test_core.py --json > core_result.json
           python -c "
@@ -69,7 +71,7 @@ jobs:
           assert d['passed'], '统计核心测试失败'
           "
 
-      - name: 一键复现（49 项，核对 README 声明值）
+      - name: 一键复现（56 项，核对 README 声明值与数据来源）
         run: |
           python reproduce.py --json > reproduce_result.json
           python -c "
