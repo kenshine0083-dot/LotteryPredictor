@@ -15,9 +15,9 @@ EXPECTED 中的数字是「文档断言」，不是 calculated 结果：文档�
 复现就会失败，这正是它的用途——防止结论与数据在后续维护中悄悄漂移。
 
 边界：本脚本验证的是「文档数字能否由公开数据经同一套代码重算出来」，
-不验证统计算法本身是否正确（那是 test_pipeline.py 的职责）。
+不验证统计算法本身是否正确（那是 test_core.py 与 test_pipeline.py 的职责）。
 
-依赖：numpy / pandas / scipy / openpyxl（均为 requirements.txt 的子集）。
+依赖：requirements-core.txt（numpy / pandas / scipy / openpyxl），不需要 TensorFlow。
 """
 from __future__ import annotations
 
@@ -198,7 +198,7 @@ def main():
         lines.append('结论：README 中所有可核对的数字，均可由仓库内公开数据复算得到。')
     else:
         lines.append('结论：存在不一致，请检查是否修改了数据或文档而未同步另一处。')
-    lines.append('说明：本脚本验证「数字可复算」，统计算法正确性由 test_pipeline.py 覆盖。')
+    lines.append('说明：本脚本验证「数字可复算」，统计算法正确性由 test_core.py / test_pipeline.py 覆盖。')
     lines.append('=' * 70)
     print('\n'.join(lines))
     return 0 if rec.passed else 1

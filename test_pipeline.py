@@ -934,6 +934,40 @@ def main():
           not (imported & banned),
           '顶层导入=' + ', '.join(sorted(imported)))
 
+    # ---- CI 配置与依赖分层：workflow 必须与核心测试入口保持一致 ----
+    wf = BASE / '.github' / 'workflows' / 'ci.yml'
+    wf_text = wf.read_text(encoding='utf-8') if wf.exists() else ''
+    check('CI:workflow 引用核心测试、复现脚本与核心依赖',
+          all(s in wf_text for s in ('test_core.py', 'reproduce.py',
+                                     'requirements-core.txt')),
+          f'{len(wf_text)} 字符')
+    core_req = BASE / 'requirements-core.txt'
+    req_text = core_req.read_text(encoding='utf-8') if core_req.exists() else ''
+    # 只看真实依赖声明行：注释里「不含 tensorflow」这类说明文字不算依赖
+    deps = [line.split('#', 1)[0].strip() for line in req_text.splitlines()]
+    deps = [d for d in deps if d]
+    check('CI:核心依赖不含 TensorFlow / sklearn',
+          bool(deps)
+          and any(d.startswith('numpy') for d in deps)
+          and any(d.startswith('scipy') for d in deps)
+          and not any(s in ' '.join(deps).lower()
+                      for s in ('tensorflow', 'keras-tuner', 'scikit-learn')),
+          '依赖=' + ', '.join(deps))
+
+    import subprocess
+    proc = subprocess.run([sys.executable, str(BASE / 'test_core.py'), '--json'],
+                          capture_output=True, text=True, timeout=180,
+                          encoding='utf-8', errors='replace')
+    core_ok, core_total = False, 0
+    if proc.returncode == 0:
+        try:
+            payload = json.loads(proc.stdout)
+            core_ok, core_total = payload['passed'], payload['total']
+        except Exception:
+            pass
+    check('CI:test_core.py 独立运行全通过', core_ok,
+          f'退出码 {proc.returncode}，{core_total} 项')
+
     fails = [n for n, ok2 in RESULTS if not ok2]
     print()
     print(f'共 {len(RESULTS)} 项，通过 {len(RESULTS) - len(fails)}，失败 {len(fails)}')

@@ -1,5 +1,9 @@
 # 排列3 分析与选号工具
 
+[![统计核心 CI](https://github.com/kenshine0083-dot/LotteryPredictor/actions/workflows/ci.yml/badge.svg)](https://github.com/kenshine0083-dot/LotteryPredictor/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![核心依赖 Python](https://img.shields.io/badge/core--python-3.8--3.13-blue.svg)](./requirements-core.txt)
+
 > **这个工具不预测号码。** 它做的事情是：给出互不重复的候选组合、算清每一步的真实中奖概率与期望亏损、验证历史数据是否真的随机、并长期审计自己的选号表现。
 
 如果你是想找「下一期会开什么」的工具，这里没有，也无法有 —— 原因写在下面的结论里。
@@ -30,12 +34,22 @@
 
 ## 快速开始
 
-**环境**：Python 3.8–3.11（本项目 `.venv` 为 3.8.8）。TensorFlow 2.13 在 Python 3.13 上没有 wheel，装不上。
+**完整功能（GUI / 模型）**：Python 3.8–3.11（本项目 `.venv` 为 3.8.8）。TensorFlow 2.13 在 Python 3.13 上没有 wheel，装不上。
 
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
+
+**只用统计核心、复现结论或跑 CI**：不需要 TensorFlow，Python 3.8–3.13 都可以，装四个轻量包即可：
+
+```bash
+pip install -r requirements-core.txt
+python test_core.py          # 57 项统计核心测试
+python reproduce.py          # 49 项文档数字复现
+```
+
+依赖分层见 [`requirements-core.txt`](./requirements-core.txt)，CI 在 Python 3.11 与 3.13 两个版本上验证。
 
 **数据**：`历史数据.xlsx`，两列 —— `Period`（期号，降序）、`Numbers`（空格分隔的三位数字）。
 
@@ -88,12 +102,16 @@ python main.py
 
 ## 命令行工具
 
-`randomness.py` / `audit.py` / `settlement.py` / `reproduce.py` 只依赖标准库 + numpy/pandas/scipy，秒级启动，不需要 TensorFlow；`simulation.py` 因为与模型共用 `rank_combos`，会间接导入 TensorFlow，首次加载较慢。
+`randomness.py` / `audit.py` / `settlement.py` / `reproduce.py` / `test_core.py` 只依赖标准库 + numpy/pandas/scipy/openpyxl，秒级启动，不需要 TensorFlow 与 tkinter；`simulation.py` 因为与模型共用 `rank_combos`，会间接导入 TensorFlow，首次加载较慢。
 
 ```bash
 # 一键复现：把 README 里每个数字重算一遍，逐项 PASS/FAIL（干净 clone 即可跑）
 python reproduce.py
 python reproduce.py --json            # 机器可读结果，供 CI 使用
+
+# 统计核心测试：零 TF / 零 tkinter，CI 跑的就是这条
+python test_core.py
+python test_core.py --json
 
 # 九项随机性检验（报告含 Holm 校正后 p 值；默认读 config 指定的数据文件）
 python randomness.py
@@ -127,7 +145,8 @@ README 里的结论全部由真实数据算出，但 `picks/`（个人投注记�
 ```bash
 git clone https://github.com/kenshine0083-dot/LotteryPredictor.git
 cd LotteryPredictor
-pip install numpy pandas scipy openpyxl
+pip install -r requirements-core.txt
+python test_core.py
 python reproduce.py
 ```
 
@@ -145,7 +164,7 @@ python reproduce.py
 
 `reproduce.py` 复用项目本体的代码路径（`randomness.analyze` / `evaluation.wilson_interval` / `audit._binom_p` / `audit.required_samples`），并把 README 的声明值写成 `EXPECTED` 常量。**文档改了数字而脚本没同步，复现就会失败** —— 它就是用来防止结论与数据在后续维护中悄悄漂移的。
 
-需要划清的边界：它验证的是「文档数字能否由仓库内公开数据经同一套代码重算出来」，**不验证统计算法本身是否正确**，后者由 `test_pipeline.py` 覆盖。
+需要划清的边界：它验证的是「文档数字能否由仓库内公开数据经同一套代码重算出来」，**不验证统计算法本身是否正确**，后者由 `test_core.py`（CI 中持续运行）与 `test_pipeline.py`（本地全量）覆盖。
 
 ---
 
@@ -189,7 +208,10 @@ python reproduce.py
 | `export_aggregate.py` | 从本地 `picks/` 导出脱敏逐期聚合数据（仅维护用） |
 | `gui.py` | Tkinter 界面；所有耗时操作走后台线程，结果经队列回主线程 |
 | `plot_audit.py` | 审计结果可视化（需 matplotlib） |
-| `test_pipeline.py` | 全链路测试 |
+| `test_pipeline.py` | 本地全链路测试，115 项（需 TF 与显示环境） |
+| `test_core.py` | 统计核心测试，57 项（零 TF / 零 tkinter，CI 入口） |
+| `requirements-core.txt` | 统计核心 / 一键复现 / CI 的最小依赖 |
+| `.github/workflows/ci.yml` | GitHub Actions：核心测试 + 文档数字复现，跨 Python 3.11 / 3.13 |
 
 运行时产物：
 
@@ -223,13 +245,33 @@ python reproduce.py
 
 ## 测试
 
-```bash
-python test_pipeline.py
-```
+两套测试，互不替代：
 
-112 项，覆盖数据完整性、特征工程、模型训练与状态往返、三种玩法账目、picks 存档与对账、GUI 非阻塞与文案口径、随机性检验与 Holm 校正、累积审计、脱敏聚合数据与一键复现。
+| 命令 | 项数 | 环境 | 跑在哪 |
+|---|---|---|---|
+| `python test_core.py` | 57 | numpy/pandas/scipy/openpyxl，零 TF、零 tkinter | **CI 每次 push**，Python 3.11 + 3.13 |
+| `python reproduce.py` | 49 | 同上 | **CI 每次 push**，核对 README 声明值 |
+| `python test_pipeline.py` | 115 | 完整 `requirements.txt` + 显示环境 | 本地；含 GUI、模型训练与状态往返 |
+
+`test_pipeline.py` 覆盖数据完整性、特征工程、模型训练与状态往返、三种玩法账目、picks 存档与对账、GUI 非阻塞与文案口径、随机性检验与 Holm 校正、累积审计、脱敏聚合数据与一键复现。
 
 其中几项是刻意设置的反向断言：**GUI 输出里不允许出现「预测下一期」**；选号区**不允许**把模型打分标成「中奖概率」；纯随机数据**不允许**被误判为「有结构」；故意篡改 README 声明的数字时，一键复现**必须**失败。这样口径或结论一旦被改回去，测试会直接失败。
+
+---
+
+## 持续集成
+
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) 在 push 与 PR 时触发，做五件事：
+
+1. 只装 `requirements-core.txt`（不装 TensorFlow / keras-tuner / scikit-learn），并显式断言环境里确实没有这些重依赖；
+2. 全仓语法编译，包括 GUI 与模型模块 —— **只编译不导入**，因此不需要 TF 或显示器；
+3. 跑 `test_core.py --json`（57 项统计核心测试）；
+4. 跑 `reproduce.py --json`（49 项，把 README 每个数字重算一遍）；
+5. 归档两份 JSON 结果供下载。
+
+**为什么 CI 不跑那 115 项全量测试**：`test_pipeline.py` 顶层 `import tkinter`，且训练用例需要 TF 2.13，而 TF 把 Python 锁死在 3.8–3.11，Linux runner 还得配 xvfb 虚拟显示。把统计结论的持续验证绑在这套重环境上，既不快也不可靠。拆成核心层之后，CI 秒级完成，还能同时跑 Python 3.11 与 3.13 —— 后者正是 TF 装不上的版本，两者都绿才说明统计链路真的与模型环境解耦了。
+
+`test_core.py` 里还有一条架构守卫：它用 AST 检查 `paths / evaluation / randomness / settlement / audit / export_aggregate / reproduce` 的**顶层 import**，一旦有人在这些模块里顺手加了 `import tensorflow`，CI 会直接变红。
 
 ---
 

@@ -1,0 +1,16 @@
+# 统计核心 / 一键复现 / CI 所需的最小依赖。
+#
+# 不含 tensorflow、keras-tuner、scikit-learn、requests、tenacity —— 这些只服务于
+# 模型训练、GUI 与体彩接口，装齐需要数百 MB，且把 Python 锁死在 3.8–3.11。
+# 核心链路只用到 numpy、pandas(读 xlsx)、scipy(卡方/二项检验)、openpyxl，
+# 兼容 Python 3.8–3.13；CI 在 3.11 与 3.13 上验证。
+#
+#   pip install -r requirements-core.txt
+#   python test_core.py
+#   python reproduce.py
+#
+# 需要 GUI / 模型 / 回测模拟器时，再装完整的 requirements.txt。
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+openpyxl>=3.1
